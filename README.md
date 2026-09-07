@@ -1,18 +1,20 @@
 # ALORAIR Lite for Home Assistant
 
-An unofficial Home Assistant integration for dehumidifiers connected to the **AlorAir-Lite** cloud service. It exposes device controls and telemetry through standard Home Assistant entities.
+An unofficial Home Assistant integration for **AlorAir-Lite** dehumidifiers. The default cloud profile exposes device controls and telemetry through standard Home Assistant entities. An opt-in [experimental local profile](docs/LOCAL_CONTROL.md) accepts the unit's native TCP connection after device-specific network setup.
 
-**Live-tested with one Storm Pro using AlorAir-Lite on Home Assistant 2026.6.2.** Power, humidity, continuous mode, purge, display units and locate were confirmed through fresh device reports. Other models remain unverified. This is telemetry confirmation, not independent physical observation. See [Compatibility](docs/COMPATIBILITY.md) and [Validation](docs/LIVE_VALIDATION.md).
+**The cloud profile was live-tested with one Storm Pro using AlorAir-Lite on Home Assistant 2026.6.2.** Power, humidity, continuous mode, purge, display units and locate were confirmed through fresh device reports. Other models remain unverified. This is telemetry confirmation, not independent physical observation. See [Compatibility](docs/COMPATIBILITY.md) and [Validation](docs/LIVE_VALIDATION.md).
+
+The local profile in this source branch is **unreleased**; published v0.2.2 contains the cloud profile only. Local support is incomplete: a standalone endpoint demonstrated display-unit changes and one warm reconnect, but local power and the new HA profile still need appliance commissioning. It has no humidity controller, humidity readings, faults, purge or locator entities, so it is not a drop-in production migration. [Local setup and evidence](docs/LOCAL_CONTROL.md)
 
 ## Get started
 
 1. Check your exact model and controller against the [compatibility guide](docs/COMPATIBILITY.md). The device must already work in AlorAir-Lite under your owning account.
-2. Follow [Installation](docs/INSTALL.md) for **HACS** (Home Assistant Community Store) or a manual install, then add **ALORAIR Lite** through **Settings → Devices & services**.
+2. Follow [Installation](docs/INSTALL.md) for **HACS** (Home Assistant Community Store) or a manual install, then add **ALORAIR Lite** through **Settings → Devices & services** and choose **AlorAir-Lite cloud**. Experimental local setup has separate [network requirements](docs/LOCAL_CONTROL.md#network-requirements).
 3. Open the created device page for power, humidity, mode and telemetry. Use the entity IDs assigned by your installation.
 
 **Distribution status:** HACS metadata and instructions are included, but this repository is currently private. [HACS requires a public repository](https://hacs.xyz/docs/faq/private_repositories/), so use the authenticated [manual installation](docs/INSTALL.md#manual-installation) for now. The integration is not in HACS's default catalog. The guide also covers moving an existing manual installation to HACS when public distribution is available.
 
-## Capabilities
+## Cloud capabilities
 
 | Feature | Behavior |
 | --- | --- |
@@ -31,7 +33,7 @@ There are no fan-speed, fan run-on, calibration or device-timer controls. This r
 
 The cloud contract was reconstructed from AlorAir-Lite Android 2.0.8. ALORAIR lists additional Storm models for its Lite app, but that does not establish compatibility with this integration. AlorAir-R and AlorAir-C devices are outside current support. Check the [model and controller matrix](docs/COMPATIBILITY.md).
 
-The vendor endpoint uses **unencrypted HTTP**, acknowledged during setup. Home Assistant stores the account password in its configuration; session tokens stay in memory. Protect the configuration and backups, and read [Security](docs/SECURITY.md). Cloud/network outages can prevent commands from reaching the unit.
+The cloud endpoint uses **unencrypted HTTP**, acknowledged during setup. Home Assistant stores the account password in its configuration; session tokens stay in memory. The local transport uses unencrypted TCP with source-IP and device-identity checks, without cryptographic authentication. Protect the configuration, backups and local network, and read [Security](docs/SECURITY.md). Neither profile can deliver commands over a failed connection, and there is no automatic fallback between them.
 
 ## Development
 

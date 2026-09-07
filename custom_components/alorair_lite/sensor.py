@@ -24,6 +24,9 @@ MEASUREMENTS = (
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
     coordinator = entry.runtime_data
+    if coordinator.is_local:
+        async_add_entities([AlorairSampleTime(coordinator), AlorairCommandFeedback(coordinator)])
+        return
     async_add_entities(
         [
             *(AlorairMeasurement(coordinator, *item) for item in MEASUREMENTS),
@@ -134,10 +137,14 @@ class AlorairCommandFeedback(AlorairEntity, SensorEntity):
         feedback = self.coordinator.last_command
         if feedback is None:
             return {}
-        return {
+        result = {
             "action": feedback.action,
             "requested_at": feedback.issued_at,
             "requested_value": feedback.requested,
-            "cloud_acknowledged": feedback.acknowledged,
             "device_reported_at": feedback.reported_at,
         }
+        if self.coordinator.is_local:
+            result["transport"] = "local_tcp"
+        else:
+            result["cloud_acknowledged"] = feedback.acknowledged
+        return result

@@ -12,6 +12,8 @@ from .models import faults, number, powered
 
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
+    if entry.runtime_data.is_local:
+        return
     async_add_entities([AlorairHumidifier(entry.runtime_data)])
 
 

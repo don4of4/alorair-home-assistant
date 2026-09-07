@@ -1,10 +1,10 @@
 # Reconstructed AlorAir-Lite protocol
 
-This documents independently written interoperability code based on static analysis of **AlorAir-Lite Android 2.0.8**, package `com.ruifeng.alorairrliteNew`. The vendor does not publish this as a supported API contract. The app bundle and extracted source are not included in this repository. Physical acceptance and firmware behavior must be established by [live validation](LIVE_VALIDATION.md).
+This documents independently written interoperability code based on static analysis of **AlorAir-Lite Android 2.0.8**, package `com.ruifeng.alorairrliteNew`, and device-scoped native TCP observations. The vendor does not publish this as a supported API contract. App binaries, extracted source and raw device captures are not distributed in this repository. The cloud contract and [experimental local contract](#experimental-local-tcp-transport) have different evidence and entity surfaces; cloud fields must not be treated as validated native offsets. See [cloud validation](LIVE_VALIDATION.md) and [local evidence limits](LOCAL_CONTROL.md#available-controls-and-evidence).
 
 The Storm Pro/Lite contract must not be substituted with Sentinel/AlorAir-C protocol constants. The manufacturer's [old/new app comparison](https://www.alorair.com/blog/spotting-the-difference-old-vs-new-alorair-apps/) describes controller-generation differences.
 
-## Transport and authentication
+## Cloud transport and authentication
 
 The app's REST base is `http://online-app1.toovem.com:8081/rest/api/`. The tested endpoint requires HTTP; an interchangeable HTTPS endpoint has not been established. See [Security](SECURITY.md).
 
@@ -24,7 +24,7 @@ Read requests have bounded authentication refresh. A timeout, malformed response
 
 The cloud's opaque `deviceId`, cloud `deviceNum` and Wi-Fi MAC are distinct. Live evidence shows a 24-character `deviceNum`: exactly twelve zeros followed by the twelve hexadecimal MAC digits. Setup still takes the ordinary Wi-Fi MAC. The client accepts only this exact padded shape or a full conventional MAC, retains the vendor's original cloud number for commands, and rejects arbitrary suffix matches. History rows can omit `userId`, so they are discovery candidates only: detail must match the complete cloud number and prove `userId == authenticated uid` before status or control. The validated history ID anchors the detail request URL. Live detail omits that internal ID; if an ID is present it must match, and only a missing ID is supplied from the request after identity and ownership pass. It does not call the app's `switchDevice` endpoint while polling.
 
-## Implemented command contract
+## Cloud command contract
 
 In this table, `D` is the authenticated opaque device ID and `N` is that same device's full device number. These are symbolic values, never guessed IDs. Every row uses `POST iot/device/control`.
 
@@ -40,7 +40,7 @@ In this table, `D` is the authenticated opaque device ID and `N` is that same de
 
 The app allows unit changes while off. Its power UI rejects faults other than raw 00/20; this integration preserves the ability to request a normal off for an available faulted unit. An accepted control response is followed by state polling; it does not overwrite telemetry with the requested state.
 
-## State interpretation
+## Cloud state interpretation
 
 | Vendor fields | Interpretation |
 | --- | --- |
@@ -95,7 +95,7 @@ Pending commands represent intent awaiting observed state. They are not entity-s
 
 The last observed numeric target is retained during a running integration session and recorded in Home Assistant's saved entity state. When starting in continuous mode, the integration restores a valid saved target if available. Returning to `auto` uses that target, or 50% if no numeric target or valid saved history is available. An explicit target command avoids that fallback. Restoring this setting does not issue a power or humidity command by itself.
 
-## Boundaries of this implementation
+## Cloud implementation boundaries
 
 The app also contains cloud name/location changes, filter-maintenance and OTA APIs. They are outside this integration's initial command surface; installation and polling do not rename, rebind, reset filters, change sharing or trigger firmware updates.
 
@@ -121,4 +121,60 @@ Unused helper definitions mention identity reads and MQTT configuration, but no 
 
 A separate maintainer's [local TCP bridge](https://github.com/sethrobin/alorair-local/tree/d056eaa792fb70e1a5c097be87da1bde16080afc) reports a working Sentinel HDi65S / AlorAir-C implementation using the device's outbound TCP connection to port 6200. Several command numbers and the reserved/MAC envelope structure resemble the Lite contract, making this a useful interoperability lead. That controller's continuous-mode value and state interpretation differ. The [wire protocol](https://github.com/sethrobin/alorair-local/blob/d056eaa792fb70e1a5c097be87da1bde16080afc/PROTOCOL.md) must not be assumed valid for a Storm/Lite unit without its own capture and validation.
 
-This integration currently remains cloud-based. A future local implementation needs positively identified traffic, verified framing/checksums and status mappings, normal shutdown/restart behavior, and an explicit method for replacing the cloud connection. A negative BLE scan or closed LAN port is insufficient to prove that local control is impossible.
+Subsequent Storm/Lite captures established the native contract below, and a standalone local endpoint demonstrated display changes and one warm reconnect. These observations do not validate every upstream field or command, a BLE control path, or a complete offline Home Assistant installation.
+
+## Experimental local TCP transport
+
+The experimental profile listens for an inbound appliance connection. One Lite-equipped Storm Pro was observed initiating TCP to port **6100**. The integration does not connect outward to the device or vendor, provision Wi-Fi, or configure router rules. The network must explicitly direct that device's connection to the listener; see [Local setup](LOCAL_CONTROL.md#network-requirements).
+
+### Frame structure
+
+Offsets below are zero-based. All multibyte integers are big-endian.
+
+| Offset | Length | Meaning |
+| --- | --- | --- |
+| 0 | 2 | Start marker `0D 0E` |
+| 2 | 6 | Reserved zero bytes |
+| 8 | 6 | Full device Wi-Fi MAC |
+| 14 | 4 | Timestamp token; observed device-originated frames used zero |
+| 18 | 2 | Data length, `N` |
+| 20 | 1 | Function |
+| 21 | 1 | Opcode |
+| 22 | 4 | Reserved zero bytes |
+| 26 | `N` | Data |
+| `26 + N` | 2 | Additive checksum: `sum(frame[:-3]) & 0xffff` |
+| `28 + N` | 1 | Terminator `16` |
+
+The complete frame length is **`29 + N`**. The checksum's high byte is not a message class or model marker. A length value such as `0x0022` means 34 data bytes; it does not identify a product family. Parsing is length-delimited after TCP reassembly, with strict identity, header, length and full-checksum checks. The four body-reserved bytes are retained; the recognized heartbeat specifically requires them to be zero. Neither the MAC nor the checksum authenticates a sender cryptographically.
+
+### Observed functions and commands
+
+| Direction / purpose | Function / opcode | Data | Evidence |
+| --- | --- | --- | --- |
+| Device heartbeat | `09 / 01` | Empty | Captured and handled by the local endpoint. |
+| Endpoint heartbeat reply | `09 / 01` | One byte `00` | Repeated local exchanges succeeded. |
+| Temperature display selection | `09 / 24` | `00` Celsius, `01` Fahrenheit | Both changes and restoration were confirmed through local device reports. |
+| Baseline device status | `07 / 1C` | 34 bytes on the tested unit | Observed periodically while off and across warm reconnection. |
+| Display command report | `07 / 24` | 34 bytes | Data offset 32 changes between `00`/`01`; full-frame offset 58. |
+| Power request | `09 / 21` | `01` on, `00` off | Captured from the vendor connection; local live power test remains pending. |
+| Power command report | `07 / 21` | 34 bytes | Data offset 3 (full-frame offset 29) changed between `01`/`00` after captured on/off requests. |
+
+Only the observed native power values `00` and `01` map to off/on. Other values are unknown; the cloud interpretation of `powerStatus=02` is not transferred into the native decoder. The reports establish device-reported enabled state, not compressor or pump current. Another field changed during shutdown, but its physical meaning remains unmapped.
+
+Native humidity measurements/targets, continuous-mode selection, faults, purge, locator and specific-humidity display settings are not validated here. Similar opcode numbers in the app or another controller's project are insufficient to expose them as local controls.
+
+### Freshness, command matching and cancellation
+
+Local sample time is Home Assistant's receipt time. The client also tracks a monotonic receipt time, connection/session identity and receive sequence; it does not invent a device timestamp from the observed zero token. A fresh TCP connection does not reuse the prior session's sample.
+
+Commands are serialized and spaced at least 1.1 seconds after the preceding outbound frame, with a later timestamp token. A paced local display trial succeeded after an earlier closely spaced command was ignored. Both spacing and timestamp separation changed, so the cause and minimum firmware timing requirement remain unproven.
+
+A command result requires a matching opcode/value on the same connection, after its write boundary. That boundary includes all bytes already delivered to the stream reader, including complete unread frames and partial parser-buffer frames. A buffered pre-command report cannot confirm the new request. Heartbeat traffic and unrelated status opcodes do not confirm an operating command.
+
+Timeout or disconnection after queueing is reported as uncertain. The client never automatically replays that command on reconnection. Caller cancellation cancels and joins a pending send before returning, so a delayed ON cannot be transmitted behind a subsequent OFF. Cleanup closes accepted sockets, drains owned tasks and releases the listener. These software checks are covered with synthetic socket tests; they do not establish physical shutdown during an appliance/network failure.
+
+Fresh status is required before starting or changing display units. A safety OFF request is permitted on a verified connected session even if its status has become stale, but still needs a matching later report for confirmation. The Home Assistant power option gates ON and is disabled by default. No local fault interpretation or humidity control is inferred from this exception.
+
+### Validation boundary
+
+A standalone endpoint completed local Fahrenheit → Celsius → Fahrenheit and one deliberate warm disconnect/reconnect, with fresh status/heartbeat afterward. Scoped routing was removed and fresh vendor application exchanges were observed after rollback. Power frames are capture-mapped, not yet locally appliance-tested. The new Home Assistant local profile, cold boot, future destination/DNS changes and sustained offline operation remain to be commissioned. This is an experimental transport rather than complete offline support.

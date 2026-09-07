@@ -1,0 +1,113 @@
+"""Observed Storm/Lite framing; no network access or unverified command opcodes."""
+
+from dataclasses import dataclass
+
+MAGIC = b"\x0d\x0e"
+MAX_DATA = 256
+
+
+@dataclass(frozen=True)
+class Frame:
+    mac: bytes
+    timestamp: int
+    function: int
+    opcode: int
+    data: bytes
+    reserved: bytes = bytes(4)
+
+    def encode(self) -> bytes:
+        if len(self.mac) != 6 or len(self.reserved) != 4:
+            raise ValueError("Invalid identity or reserved field length")
+        if len(self.data) > MAX_DATA or not 0 <= self.timestamp <= 0xFFFFFFFF:
+            raise ValueError("Frame exceeds supported bounds")
+        prefix = (
+            MAGIC
+            + bytes(6)
+            + self.mac
+            + self.timestamp.to_bytes(4, "big")
+            + len(self.data).to_bytes(2, "big")
+            + bytes([self.function, self.opcode])
+            + self.reserved
+            + self.data
+        )
+        return prefix + (sum(prefix) & 0xFFFF).to_bytes(2, "big") + b"\x16"
+
+    @classmethod
+    def decode(cls, raw: bytes, expected_mac: bytes | None = None) -> Frame:
+        if len(raw) < 29 or raw[:8] != MAGIC + bytes(6):
+            raise ValueError("Invalid frame header")
+        data_length = int.from_bytes(raw[18:20], "big")
+        if data_length > MAX_DATA or len(raw) != 29 + data_length:
+            raise ValueError("Invalid declared frame length")
+        if raw[-1] != 0x16 or (sum(raw[:-3]) & 0xFFFF) != int.from_bytes(raw[-3:-1], "big"):
+            raise ValueError("Invalid two-byte checksum or terminator")
+        if expected_mac is not None and raw[8:14] != expected_mac:
+            raise ValueError("Unexpected appliance identity")
+        return cls(
+            raw[8:14],
+            int.from_bytes(raw[14:18], "big"),
+            raw[20],
+            raw[21],
+            raw[26:-3],
+            raw[22:26],
+        )
+
+
+class FrameStream:
+    """Split a bounded byte stream by the observed length field."""
+
+    def __init__(self, expected_mac: bytes | None = None) -> None:
+        self.buffer = bytearray()
+        self.expected_mac = expected_mac
+
+    def feed(self, data: bytes) -> list[tuple[bytes, Frame]]:
+        self.buffer.extend(data)
+        frames = []
+        while len(self.buffer) >= 20:
+            if self.buffer[:8] != MAGIC + bytes(6):
+                raise ValueError("Unexpected stream header")
+            size = 29 + int.from_bytes(self.buffer[18:20], "big")
+            if size > MAX_DATA + 29:
+                raise ValueError("Declared stream frame too large")
+            if len(self.buffer) < size:
+                break
+            raw = bytes(self.buffer[:size])
+            frames.append((raw, Frame.decode(raw, self.expected_mac)))
+            del self.buffer[:size]
+        if len(self.buffer) > MAX_DATA + 29:
+            raise ValueError("Unbounded partial frame")
+        return frames
+
+    def finish(self) -> None:
+        if self.buffer:
+            raise ValueError("Partial frame at stream end")
+
+
+def keepalive_response(mac: bytes, timestamp: int) -> bytes:
+    return Frame(mac, timestamp, 0x09, 0x01, b"\x00").encode()
+
+
+def temperature_command(mac: bytes, fahrenheit: bool, timestamp: int) -> bytes:
+    if type(fahrenheit) is not bool:
+        raise ValueError("Display selection must be boolean")
+    return Frame(mac, timestamp, 0x09, 0x24, bytes([int(fahrenheit)])).encode()
+
+
+def power_command(mac: bytes, on: bool, timestamp: int) -> bytes:
+    """Build the captured enabled-state command, not a compressor measurement."""
+    if type(on) is not bool:
+        raise ValueError("Power selection must be boolean")
+    return Frame(mac, timestamp, 0x09, 0x21, bytes([int(on)])).encode()
+
+
+def observed_status(frame: Frame) -> dict[str, bool | int | str | None]:
+    if frame.function != 0x07 or len(frame.data) != 34:
+        raise ValueError("Not the observed Storm/Lite status layout")
+    # Display and 0/1 enabled state are established by captured command echoes.
+    if frame.data[32] not in (0, 1):
+        raise ValueError("Unknown temperature display value")
+    return {
+        "temperature_display": "fahrenheit" if frame.data[32] else "celsius",
+        "power": bool(frame.data[3]) if frame.data[3] in (0, 1) else None,
+        "event_opcode": frame.opcode,
+    }

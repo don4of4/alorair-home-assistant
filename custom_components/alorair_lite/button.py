@@ -7,6 +7,8 @@ from .entity import AlorairEntity
 
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
+    if entry.runtime_data.is_local:
+        return
     async_add_entities([AlorairPurge(entry.runtime_data), AlorairRefresh(entry.runtime_data)])
 
 

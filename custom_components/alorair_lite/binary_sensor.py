@@ -8,6 +8,9 @@ from .models import code, faults
 
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
+    if entry.runtime_data.is_local:
+        async_add_entities([AlorairBinary(entry.runtime_data, "fresh", "Fresh device sample")])
+        return
     async_add_entities(
         [
             AlorairBinary(entry.runtime_data, key, name)
@@ -34,6 +37,8 @@ class AlorairBinary(AlorairEntity, BinarySensorEntity):
 
     @property
     def available(self) -> bool:
+        if self.key == "fresh" and self.coordinator.is_local:
+            return True
         return self.coordinator.last_update_success if self.key == "fresh" else super().available
 
     @property

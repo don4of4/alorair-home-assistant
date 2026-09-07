@@ -62,6 +62,8 @@ def utc_sample(data: dict[str, Any]) -> datetime | None:
 class AlorairCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Share one polled state across all entities for a selected unit."""
 
+    is_local = False
+
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: AlorairClient, mac: str) -> None:
         super().__init__(
             hass,

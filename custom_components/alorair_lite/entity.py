@@ -5,12 +5,13 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import AlorairCoordinator
+from .local_coordinator import LocalAlorairCoordinator
 
 
-class AlorairEntity(CoordinatorEntity[AlorairCoordinator]):
+class AlorairEntity(CoordinatorEntity[AlorairCoordinator | LocalAlorairCoordinator]):
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: AlorairCoordinator, key: str) -> None:
+    def __init__(self, coordinator: AlorairCoordinator | LocalAlorairCoordinator, key: str) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.mac}_{key}"
         self._attr_device_info = DeviceInfo(

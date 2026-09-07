@@ -9,24 +9,26 @@ from .models import number
 
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
-    async_add_entities(
-        [
-            AlorairUnit(
-                entry.runtime_data,
-                "temperatureUnit",
-                "Temperature display",
-                ["celsius", "fahrenheit"],
-                "async_set_temperature_unit",
-            ),
+    entities = [
+        AlorairUnit(
+            entry.runtime_data,
+            "temperatureUnit",
+            "Temperature display",
+            ["celsius", "fahrenheit"],
+            "async_set_temperature_unit",
+        )
+    ]
+    if not entry.runtime_data.is_local:
+        entities.append(
             AlorairUnit(
                 entry.runtime_data,
                 "humidityUnit",
                 "Specific humidity display",
                 ["grains_per_pound", "grams_per_kilogram"],
                 "async_set_moisture_unit",
-            ),
-        ]
-    )
+            )
+        )
+    async_add_entities(entities)
 
 
 class AlorairUnit(AlorairEntity, SelectEntity):

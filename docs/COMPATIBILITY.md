@@ -1,16 +1,25 @@
 # Model and controller compatibility
 
-**Only one AlorAir-Lite-equipped Storm Pro has been live-tested with this integration.** ALORAIR's own app compatibility list is broader, but a manufacturer-listed model is a candidate for testing, not a verified integration target. Reviewed September 7, 2026.
+**Only one AlorAir-Lite-equipped Storm Pro has been live-tested with the cloud integration.** A standalone local endpoint also demonstrated display-unit changes and one warm reconnect on that unit; the new Home Assistant local profile and local power control remain uncommissioned. ALORAIR's own app compatibility list is broader, but a manufacturer-listed model is a candidate for testing, not a verified integration target. Reviewed September 7, 2026.
 
 ## Evidence levels
 
 | Level | Meaning |
 | --- | --- |
 | Integration tested | Commands and fresh device reports were observed through this integration on a particular unit. |
+| Local prototype tested | A standalone local endpoint exercised the specifically listed commands/reconnect behavior. This does not establish the complete Home Assistant local profile or every native field. |
 | Manufacturer lists Lite | An official ALORAIR page assigns the model/controller to AlorAir-Lite. This integration has not been tested on that model. |
 | Different app or unknown | AlorAir-R/AlorAir-C, non-Wi-Fi equipment, or a variant without sufficient evidence. Outside current support. |
 
-The tested Storm Pro is the Smart Wi-Fi model marketed at 180 PPD saturation / 85 PPD AHAM. The cloud contract was reconstructed from AlorAir-Lite Android 2.0.8, package `com.ruifeng.alorairrliteNew`. Power, target RH, continuous mode, purge, locate and display-unit changes were confirmed through fresh telemetry. There was no independent physical observation. [Test record](LIVE_VALIDATION.md), [manufacturer Storm Pro page](https://www.alorair.com/product-details/alorair-storm-pro-dehumidifier-new)
+The tested Storm Pro is the Smart Wi-Fi model marketed at 180 PPD saturation / 85 PPD AHAM. The cloud contract was reconstructed from AlorAir-Lite Android 2.0.8, package `com.ruifeng.alorairrliteNew`. Cloud power, target RH, continuous mode, purge, locate and display-unit changes were confirmed through fresh telemetry. There was no independent physical observation. [Cloud test record](LIVE_VALIDATION.md), [manufacturer Storm Pro page](https://www.alorair.com/product-details/alorair-storm-pro-dehumidifier-new)
+
+## Experimental local profile
+
+The observed Lite controller initiates native TCP on port 6100. A device-scoped redirect to a standalone endpoint supported Fahrenheit → Celsius → Fahrenheit and one fresh local connection after a deliberate close. Power on/off frames and corresponding status fields were mapped from cloud-originated traffic; local live power has not yet been tested.
+
+The local Home Assistant profile exposes display selection, a power switch with ON disabled by default, and freshness/sample/command diagnostics. It does not expose a humidifier entity, native humidity measurements or targets, faults, purge, locator or continuous-mode selection. It cannot replace the cloud profile's full entity set or existing humidity automations. See [Local control and setup](LOCAL_CONTROL.md).
+
+This evidence is specific to one already-provisioned controller. Neither Lite app compatibility nor a matching enclosure establishes native TCP compatibility. Cold boot, persistent DNS/routing behavior, sustained offline operation and additional model/controller revisions remain unverified. The separate Sentinel/AlorAir-C TCP6200 implementation is not a supported alternative profile here.
 
 ## Manufacturer-listed Lite models
 
@@ -30,7 +39,7 @@ ALORAIR's [Lite app page](https://www.alorair.com/alorair-lite-wifi-app) explici
 
 Keep `LGR` versus `SLGR`, the `X` suffix, and `Smart App Control` / Wi-Fi wording when identifying a unit. Capacity alone is insufficient: several different models are marketed at 180 PPD. The site also lists Storm LGR 850/1250 and other variants separately; this matrix does not add them by name similarity.
 
-Manufacturer app compatibility does not prove identical telemetry, humidity ranges or command behavior across these models. The implemented command ranges come from the analyzed Lite app and the tested Storm Pro; validate them on another controller before treating it as supported.
+Manufacturer app compatibility does not prove identical telemetry, humidity ranges or command behavior across these models. The cloud command ranges come from the analyzed Lite app and the tested Storm Pro; validate them on another controller before treating it as supported. The model matrix does not certify the experimental local profile for those models.
 
 ## Old R controllers versus newer Lite controllers
 
@@ -60,10 +69,10 @@ Do not infer Lite support because a Sentinel has Wi-Fi, uses a similar Bluetooth
 
 The model evidence above comes from ALORAIR's `.com` catalog and its linked specifications. It is not a worldwide SKU/controller matrix. No alternate region's account routing, voltage variant, distributor-specific model, dual-voltage DP or replacement-board combination has been verified with this integration. A matching case, color, capacity or base model name is insufficient evidence.
 
-The integration currently uses the tested `online-app1.toovem.com` Lite cloud endpoint. It has no regional-server selector. Use the supplied regional connection guide and establish that the owning account can control the exact unit in the current Lite app before trying the integration. If the guide names R or C, or does not identify the app generation, seek model/controller confirmation from ALORAIR rather than assuming compatibility.
+The cloud profile uses the tested `online-app1.toovem.com` Lite endpoint and has no regional-server selector. The local profile does not contact that endpoint, but its router setup still depends on identifying the particular device's native connection; no universal vendor destination is assumed. Use the supplied regional connection guide and establish the exact controller/app generation. If it names R or C, or does not identify the generation, seek model/controller confirmation from ALORAIR rather than assuming compatibility.
 
 The current [Storm 80X page](https://www.alorair.com/product-details/alorair-storm-80x) did not establish an explicit Lite assignment in this review. It remains unknown here, as do models absent from this matrix. Absence from this document is not proof that hardware cannot work; it means compatibility has not been established.
 
 ## Reporting another model
 
-Useful evidence includes the exact model suffix, manufacture date or controller revision, app name/version, sales region, Home Assistant version and which controls returned fresh feedback. State whether physical behavior was independently observed. Redact the serial number, MAC, IP, account email and tokens before sharing. Do not report a successful login or a generic HTTP acknowledgement as proof that every control works.
+Useful evidence includes the exact model suffix, manufacture date or controller revision, app name/version, sales region, Home Assistant version, selected cloud/local profile and which controls returned fresh feedback. State whether physical behavior was independently observed. Redact the serial number, MAC, IP, account email and tokens before sharing. Do not report a successful login, TCP connection or generic acknowledgement as proof that every control works.
