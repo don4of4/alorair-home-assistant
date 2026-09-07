@@ -1,0 +1,64 @@
+experimental_action:
+  name: Experimental action
+  description: >-
+    Run a documented experimental cloud action for one owned device. Enable experimental
+    cloud actions in the integration options first. A cloud acknowledgement does not prove
+    physical actuation. Firmware checks only read availability; they never install firmware.
+  fields:
+    device_id:
+      name: Device
+      required: true
+      selector:
+        device:
+          integration: alorair_lite
+    action:
+      name: Action
+      required: true
+      selector:
+        select:
+          options:
+            - history
+            - operation_time
+            - filters
+            - filter_detail
+            - firmware_check
+            - firmware_history
+            - rename
+            - location
+            - extend_filter
+            - reset_filter
+    period:
+      name: History period
+      description: Used by history and operation_time; defaults to day.
+      selector:
+        select:
+          options: [day, month, year]
+    query_date:
+      name: History date
+      description: YYYY-MM-DD. Defaults to today's Home Assistant local date; vendor period/time-zone semantics are experimental.
+      selector:
+        date:
+    label:
+      name: Vendor label
+      description: Required for rename or location. Changes the vendor's label, not Home Assistant's entity ID.
+      selector:
+        text:
+    filter_id:
+      name: Filter ID
+      description: Required for filter_detail, extend_filter or reset_filter. Must be returned by this device's filters action.
+      selector:
+        text:
+    extension:
+      name: Filter reminder extension
+      description: Only extend_filter; vendor choices 1 = week, 2 = month, 3 = three months. These are not raw hours.
+      selector:
+        select:
+          options: ["1", "2", "3"]
+    page:
+      name: Firmware history page
+      description: Only firmware_history, from 1 to 10.
+      selector:
+        number:
+          min: 1
+          max: 10
+          mode: box

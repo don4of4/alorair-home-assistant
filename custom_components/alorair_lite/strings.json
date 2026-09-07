@@ -1,0 +1,50 @@
+{
+  "title": "ALORAIR Lite",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect your dehumidifier",
+        "description": "Connect your existing AlorAir-Lite account. The vendor API uses unencrypted HTTP: your email, session token, commands and readings are exposed in transit. Your password is RSA-wrapped for login but this does not secure the connection. Home Assistant stores the account password in its configuration; protect your configuration and backups. This unofficial integration supports devices owned by your account. Nothing is re-paired.",
+        "data": {
+          "username": "AlorAir-Lite email / username",
+          "password": "AlorAir-Lite password",
+          "mac": "Device Wi-Fi MAC (12 hexadecimal digits)",
+          "allow_insecure_http": "I accept the vendor\u2019s unencrypted HTTP connection"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Renew AlorAir-Lite login",
+        "description": "Connect your existing AlorAir-Lite account. The vendor API uses unencrypted HTTP: your email, session token, commands and readings are exposed in transit. Your password is RSA-wrapped for login but this does not secure the connection. Home Assistant stores the account password in its configuration; protect your configuration and backups. This unofficial integration supports devices owned by your account. Nothing is re-paired.",
+        "data": {
+          "username": "AlorAir-Lite email / username",
+          "password": "AlorAir-Lite password",
+          "allow_insecure_http": "I accept the vendor\u2019s unencrypted HTTP connection"
+        }
+      }
+    },
+    "error": {
+      "http_required": "Accept the HTTP disclosure before connecting.",
+      "invalid_mac": "Enter a complete 12-digit MAC address.",
+      "invalid_auth": "The vendor rejected these credentials.",
+      "cannot_connect": "The ALORAIR cloud could not be reached.",
+      "device_not_found": "The selected device was not found in this account or returned an unsupported response."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "reauth_successful": "Authentication renewed.",
+      "unique_id_mismatch": "These credentials do not match the configured device."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Polling",
+        "data": {
+          "poll_interval": "Polling interval (seconds, 15\u2013300)",
+          "experimental_controls": "Enable experimental cloud actions"
+        },
+        "description": "Experimental actions include cloud metadata and maintenance changes. Enable them only when testing documented capabilities."
+      }
+    }
+  }
+}

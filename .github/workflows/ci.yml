@@ -1,0 +1,46 @@
+name: Integration checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.14"
+      - name: Install tested dependencies
+        run: |
+          uv venv
+          uv pip sync --require-hashes requirements-dev.txt
+      - name: Lint and run Home Assistant tests
+        run: |
+          uv run --no-sync ruff check .
+          uv run --no-sync ruff format --check .
+          uv run --no-sync python scripts/check_distribution.py
+          uv run --no-sync pytest -q
+      - name: Package installable files
+        run: zip -r alorair_lite.zip custom_components/alorair_lite -x '*__pycache__*' '*.pyc'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alorair-lite-integration
+          path: alorair_lite.zip
+      - name: Explain private distribution status
+        if: github.event.repository.private
+        run: echo 'Local checks passed. Public HACS validation is skipped because HACS does not support private repositories.' >> "$GITHUB_STEP_SUMMARY"
+  hacs:
+    name: HACS public repository validation
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    steps:
+      # Official HACS action image, source revision 3f3080cbf909b8f51488e227be73f62902b4ef6c.
+      # Pin the image itself: hacs/action's wrapper otherwise selects a mutable :main image.
+      - uses: docker://ghcr.io/hacs/action@sha256:dc92fdad2f6ffbe74bffb7269d781ea8e064f52d9bb486cdf3925d74e7ab6ebf
+        env:
+          INPUT_CATEGORY: integration
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_COMMENT: "false"
+          REPOSITORY_REF: ${{ github.event.pull_request.head.sha || github.sha }}

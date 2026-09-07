@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.env
+*.token
+*.pcap
+*.pcapng
+ha-test-config/
+*.egg-info/
+uv.lock
+*.zip
