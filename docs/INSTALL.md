@@ -43,7 +43,7 @@ On a trusted computer with Git and GitHub CLI, authenticate interactively with a
 gh auth login
 gh repo clone don4of4/alorair-home-assistant
 cd alorair-home-assistant
-git checkout v0.2.1
+git checkout v0.2.2
 ```
 
 If GitHub CLI is already authenticated, use `gh auth status` and skip `gh auth login`. The checkout pins a stable release instead of installing unreleased changes from `main`; choose a newer published release tag when appropriate. GitHub documents authenticated cloning in its [CLI reference](https://cli.github.com/manual/gh_repo_clone).
@@ -154,6 +154,8 @@ make check
 ```sh
 uv export --all-groups --no-emit-project --format requirements-txt --output-file requirements-dev.txt
 ```
+
+The root `LICENSE` is the authoritative MIT license text. After changing it, run `make sync-license` to update the copy shipped inside `custom_components/alorair_lite/`; `make check` rejects mismatched copies. The component's `NOTICE.md` accompanies the manufacturer icon in both manual and HACS downloads and excludes that artwork from the code license.
 
 The index-specific local `uv.lock` is excluded from Git. Development uses `aiooui==0.1.7`, satisfying the upstream `>=0.1.1` requirement while retaining exact Home Assistant 2026.6.2. See the [dependency declaration](https://github.com/Bluetooth-Devices/bluetooth-adapters/blob/main/pyproject.toml) and [maintainer changelog](https://github.com/Bluetooth-Devices/aiooui/blob/main/CHANGELOG.md). This development constraint does not replace Bluetooth packages in an existing Home Assistant installation.
 
