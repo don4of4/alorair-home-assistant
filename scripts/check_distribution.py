@@ -17,6 +17,11 @@ def main() -> None:
     hacs = json.loads((root / "hacs.json").read_text())
     project = tomllib.loads((root / "pyproject.toml").read_text())["project"]
 
+    assert project["license"] == "MIT", "Project metadata must identify its MIT license"
+    assert (root / "LICENSE").read_bytes() == (component / "LICENSE").read_bytes(), (
+        "Packaged license differs from the authoritative root LICENSE; run make sync-license"
+    )
+    assert (component / "NOTICE.md").is_file(), "Include the third-party artwork notice in the integration"
     for key in ("domain", "documentation", "issue_tracker", "codeowners", "name", "version"):
         assert manifest.get(key), f"Missing integration manifest field: {key}"
     assert manifest["domain"] == component.name, "Integration domain and directory disagree"

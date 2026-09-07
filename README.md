@@ -39,4 +39,6 @@ Run `uv sync` and `make check` with Python **3.14.2 or newer**. See [Development
 
 This project is independent of ALORAIR and Home Assistant. Vendor application binaries, extracted source, credentials and private device identifiers are not distributed here.
 
-The bundled AlorAir-Lite icon comes unmodified from the [manufacturer's website](https://www.alorair.com/assets/website/bestAppBox/images/AlorAir-Lite%201.png). ALORAIR names and artwork belong to their respective owners and identify the supported app family; they do not imply endorsement.
+## License
+
+Project code and documentation are licensed under the [MIT License](LICENSE). The bundled AlorAir-Lite icon is third-party artwork excluded from that license; see the [packaged notice](custom_components/alorair_lite/NOTICE.md) for its source and attribution. ALORAIR names and artwork identify the supported app family and do not imply endorsement.

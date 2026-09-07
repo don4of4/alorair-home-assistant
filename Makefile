@@ -1,4 +1,4 @@
-.PHONY: check test
+.PHONY: check test sync-license
 check:
 	uv run ruff check .
 	uv run ruff format --check .
@@ -6,3 +6,5 @@ check:
 	uv run pytest -q
 test:
 	uv run pytest -q
+sync-license:
+	cp LICENSE custom_components/alorair_lite/LICENSE
