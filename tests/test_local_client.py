@@ -21,9 +21,10 @@ from custom_components.alorair_lite.local_protocol import Frame, FrameStream
 MAC = bytes.fromhex("020000000001")
 
 
-def status_frame(power=0, fahrenheit=1, opcode=0x01):
+def status_frame(power=0, fahrenheit=1, opcode=0x01, target=50):
     data = bytearray(34)
     data[3] = power
+    data[23] = target
     data[32] = fahrenheit
     return Frame(MAC, 0, 7, opcode, bytes(data)).encode()
 
@@ -108,12 +109,12 @@ class LocalClientTests(unittest.IsolatedAsyncioTestCase):
         await client.async_start()
         return client
 
-    async def connect(self, client, initialize=True):
+    async def connect(self, client, initialize=True, power=0):
         reader, writer = await asyncio.open_connection(*client.address)
         device = Device(reader, writer)
         self.devices.append(device)
         if initialize:
-            await device.send(status_frame())
+            await device.send(status_frame(power=power))
             await eventually(lambda: client.last_status is not None)
         return device
 
@@ -405,6 +406,135 @@ class LocalClientTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(errors, [{"message": "Local client callback failed"}])
         finally:
             loop.set_exception_handler(old_handler)
+
+    async def test_humidity_requires_matching_later_opcode_and_value(self):
+        client = await self.create_client()
+        device = await self.connect(client, power=1)
+        command = asyncio.create_task(client.async_set_humidity(55))
+        frame = await device.next_frame()
+        self.assertEqual((frame.opcode, frame.data), (0x23, b"\x37"))
+        self.assertEqual(client.last_status.target_humidity, 50)
+        await device.send(status_frame(opcode=0x24, target=55))
+        await eventually(lambda: client.last_status.target_humidity == 55)
+        self.assertFalse(command.done())
+        await device.send(status_frame(opcode=0x23, target=0))
+        await eventually(lambda: client.last_status.target_humidity is None)
+        self.assertFalse(command.done())
+        await device.send(status_frame(opcode=0x23, target=55))
+        result = await command
+        self.assertEqual(result.target_humidity, 55)
+        self.assertEqual(result.event_opcode, 0x23)
+        legacy = local_client.DeviceStatus(
+            result.session_id,
+            result.receive_sequence,
+            result.received_at,
+            result.received_monotonic,
+            result.power,
+            result.temperature_unit,
+            result.event_opcode,
+        )
+        self.assertIsNone(legacy.target_humidity)
+
+    async def test_humidity_rejects_reported_off_or_unknown(self):
+        for power in (0, 2):
+            with self.subTest(power=power):
+                client = await self.create_client()
+                device = await self.connect(client, power=power)
+                with self.assertRaises(local_client.CommandNotSentError):
+                    await client.async_set_humidity(55)
+                self.assertEqual(device.received, [])
+                self.assertIsNone(client._session.pending)
+
+    async def test_off_during_humidity_pacing_prevents_write_and_allows_restoration(self):
+        client = await self.create_client()
+        device = await self.connect(client, power=1)
+        await device.send(Frame(MAC, 0, 9, 1, b"").encode())
+        await device.next_frame()
+        with patch.object(local_client, "COMMAND_SPACING", 0.08):
+            command = asyncio.create_task(client.async_set_humidity(55))
+            await eventually(lambda: client._session.pending is not None)
+            self.assertFalse(client._session.pending.queued)
+            await device.send(status_frame(power=0))
+            await eventually(lambda: client.last_status.power is False)
+            with self.assertRaises(local_client.CommandNotSentError):
+                await command
+            await asyncio.sleep(0.09)
+            self.assertEqual([(frame.opcode, frame.data) for _, frame in device.received], [(1, b"\x00")])
+            restore = asyncio.create_task(client.async_set_humidity(20, allow_stale=True))
+            frame = await device.next_frame()
+            self.assertEqual((frame.opcode, frame.data), (0x23, b"\x14"))
+            await device.send(status_frame(power=0, opcode=0x23, target=20))
+            self.assertEqual((await restore).target_humidity, 20)
+
+    async def test_humidity_stale_restore_is_explicit_and_requires_verified_session(self):
+        client = await self.create_client(status_max_age=0.01)
+        with self.assertRaises(NotConnectedError):
+            await client.async_set_humidity(20, allow_stale=True)
+        device = await self.connect(client)
+        for invalid in (True, False, 21, 26, 81, 50.0, "50"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                await client.async_set_humidity(invalid, allow_stale=True)
+        with self.assertRaises(ValueError):
+            await client.async_set_humidity(20, allow_stale="yes")
+        await asyncio.sleep(0.02)
+        with self.assertRaises(StaleStatusError):
+            await client.async_set_humidity(20)
+        command = asyncio.create_task(client.async_set_humidity(20, allow_stale=True))
+        frame = await device.next_frame()
+        self.assertEqual((frame.opcode, frame.data), (0x23, b"\x14"))
+        self.assertFalse(command.done())
+        await device.send(status_frame(opcode=0x23, target=20))
+        self.assertEqual((await command).target_humidity, 20)
+        self.assertEqual(len(device.received), 1)
+
+    async def test_buffered_humidity_report_cannot_confirm_a_later_write(self):
+        client = await self.create_client(command_timeout=0.06)
+        device = await self.connect(client, power=1)
+        paused = asyncio.Event()
+        resume = asyncio.Event()
+        original_send = client._send
+
+        async def pause_after_heartbeat(session, opcode, data, pending=None):
+            await original_send(session, opcode, data, pending)
+            if opcode == 1:
+                paused.set()
+                await resume.wait()
+
+        with patch.object(client, "_send", pause_after_heartbeat):
+            await device.send(Frame(MAC, 0, 9, 1, b"").encode())
+            await device.next_frame()
+            await asyncio.wait_for(paused.wait(), 0.3)
+            session = client._session
+            consumed = session.received_bytes
+            old_report = status_frame(opcode=0x23, target=55)
+            await device.send(old_report)
+            await eventually(lambda: session.reader.total_received == consumed + len(old_report))
+            command = asyncio.create_task(client.async_set_humidity(55))
+            self.assertEqual((await device.next_frame()).data, b"\x37")
+            resume.set()
+            await eventually(lambda: client.last_status.target_humidity == 55)
+            with self.assertRaises(CommandUncertainError):
+                await command
+            self.assertEqual(len(device.received), 2)
+
+    async def test_cancelled_humidity_change_cannot_follow_restoration(self):
+        client = await self.create_client()
+        device = await self.connect(client, power=1)
+        await device.send(Frame(MAC, 0, 9, 1, b"").encode())
+        await device.next_frame()
+        with patch.object(local_client, "COMMAND_SPACING", 0.08):
+            change = asyncio.create_task(client.async_set_humidity(55))
+            await asyncio.sleep(0.01)
+            change.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await change
+            restore = asyncio.create_task(client.async_set_humidity(20, allow_stale=True))
+            frame = await device.next_frame()
+            self.assertEqual((frame.opcode, frame.data), (0x23, b"\x14"))
+            await device.send(status_frame(opcode=0x23, target=20))
+            await restore
+            await asyncio.sleep(0.09)
+        self.assertEqual([(frame.opcode, frame.data) for _, frame in device.received], [(1, b"\x00"), (0x23, b"\x14")])
 
     async def test_validation_before_any_command(self):
         config = Config("127.0.0.1", 0, "127.0.0.1", MAC.hex())

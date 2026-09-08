@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 MAGIC = b"\x0d\x0e"
 MAX_DATA = 256
+HUMIDITY_TARGETS = frozenset((20, *range(25, 81, 5)))
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,18 @@ def power_command(mac: bytes, on: bool, timestamp: int) -> bytes:
     return Frame(mac, timestamp, 0x09, 0x21, bytes([int(on)])).encode()
 
 
+def humidity_target(value: object) -> int | None:
+    """Accept supported targets; 20 selects continuous operation."""
+    return value if type(value) is int and value in HUMIDITY_TARGETS else None
+
+
+def humidity_command(mac: bytes, target: int, timestamp: int) -> bytes:
+    """Encode the target as one binary byte, not decimal text or packed digits."""
+    if humidity_target(target) is None:
+        raise ValueError("Humidity target must be 20 or 25–80 in steps of five")
+    return Frame(mac, timestamp, 0x09, 0x23, bytes([target])).encode()
+
+
 def observed_status(frame: Frame) -> dict[str, bool | int | str | None]:
     if frame.function != 0x07 or len(frame.data) != 34:
         raise ValueError("Not the observed Storm/Lite status layout")
@@ -109,5 +122,6 @@ def observed_status(frame: Frame) -> dict[str, bool | int | str | None]:
     return {
         "temperature_display": "fahrenheit" if frame.data[32] else "celsius",
         "power": bool(frame.data[3]) if frame.data[3] in (0, 1) else None,
+        "target_humidity": humidity_target(frame.data[23]),
         "event_opcode": frame.opcode,
     }

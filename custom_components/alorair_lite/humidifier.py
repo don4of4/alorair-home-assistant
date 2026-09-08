@@ -6,13 +6,14 @@ from homeassistant.components.humidifier import HumidifierDeviceClass, Humidifie
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import MODE_AUTO, MODE_CONTINUOUS
+from .const import CONF_LOCAL_POWER, MODE_AUTO, MODE_CONTINUOUS
 from .entity import AlorairEntity
 from .models import faults, number, powered
 
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
     if entry.runtime_data.is_local:
+        async_add_entities([AlorairLocalHumidifier(entry.runtime_data)])
         return
     async_add_entities([AlorairHumidifier(entry.runtime_data)])
 
@@ -32,7 +33,8 @@ class AlorairHumidifier(AlorairEntity, HumidifierEntity, RestoreEntity):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         previous = await self.async_get_last_state()
-        if self.mode == MODE_CONTINUOUS and previous:
+        waiting_for_local = self.coordinator.is_local and self.mode is None
+        if (self.mode == MODE_CONTINUOUS or waiting_for_local) and previous:
             value = number(previous.attributes, "last_auto_humidity", 25, 80)
             if value is not None and value % 5 == 0:
                 self.coordinator.last_auto_humidity = int(value)
@@ -86,3 +88,37 @@ class AlorairHumidifier(AlorairEntity, HumidifierEntity, RestoreEntity):
         await self.coordinator.async_command(
             "async_set_humidity", (humidity,), "currentHumidity", humidity, requires_on=True
         )
+
+
+class AlorairLocalHumidifier(AlorairHumidifier):
+    """Use the same humidifier identity with only verified native fields."""
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.client.connected
+
+    @property
+    def is_on(self) -> bool | None:
+        return super().is_on if not self.coordinator.status_stale else None
+
+    @property
+    def current_humidity(self) -> None:
+        return None
+
+    @property
+    def target_humidity(self) -> int | None:
+        return super().target_humidity if not self.coordinator.status_stale else None
+
+    @property
+    def mode(self) -> str | None:
+        return super().mode if not self.coordinator.status_stale else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "experimental_start_enabled": self.coordinator.config_entry.options.get(CONF_LOCAL_POWER, False),
+            "pending_power": self.coordinator.pending_power,
+            "restart_delay_remaining": self.coordinator.restart_delay_remaining,
+            "last_auto_humidity": self.coordinator.last_auto_humidity,
+            "local_received_at": self.coordinator.data.get("observed_at_utc"),
+        }

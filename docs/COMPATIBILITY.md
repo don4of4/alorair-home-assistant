@@ -1,6 +1,6 @@
 # Model and controller compatibility
 
-**Only one AlorAir-Lite-equipped Storm Pro has been live-tested with the cloud integration.** A standalone local endpoint also demonstrated display-unit changes and one warm reconnect on that unit; the new Home Assistant local profile and local power control remain uncommissioned. ALORAIR's own app compatibility list is broader, but a manufacturer-listed model is a candidate for testing, not a verified integration target. Reviewed September 7, 2026.
+**Only one AlorAir-Lite-equipped Storm Pro has been live-tested with the cloud integration.** A standalone local endpoint also confirmed power ON/OFF, targets 50% and 55%, continuous-mode restoration, display-unit changes and one warm reconnect on that unit. Other numeric targets have not been exercised locally, and the new Home Assistant local profile remains uncommissioned on hardware. ALORAIR's own app compatibility list is broader, but a manufacturer-listed model is a candidate for testing, not a verified integration target. Reviewed September 7, 2026.
 
 ## Evidence levels
 
@@ -15,9 +15,9 @@ The tested Storm Pro is the Smart Wi-Fi model marketed at 180 PPD saturation / 8
 
 ## Experimental local profile
 
-The observed Lite controller initiates native TCP on port 6100. A device-scoped redirect to a standalone endpoint supported Fahrenheit → Celsius → Fahrenheit and one fresh local connection after a deliberate close. Power on/off frames and corresponding status fields were mapped from cloud-originated traffic; local live power has not yet been tested.
+The observed Lite controller initiates native TCP on port 6100. A device-scoped redirect to a standalone endpoint supported Fahrenheit → Celsius → Fahrenheit and one fresh local connection after a deliberate close. A later local trial confirmed ON and OFF through matching native reports. Its scoped rollback completed cleanly, and fresh cloud OFF state was subsequently verified in Home Assistant. Cloud-originated native traffic established targets 50 → 55 → 50 → 20, with 20 selecting continuous mode. A subsequent standalone local trial completed ON → 50 → 55 → 20 → OFF with matching reports on the same connection. Only targets 50, 55 and continuous 20 were exercised locally; see the [validation record](LIVE_VALIDATION.md#experimental-local-commissioning) for audit status.
 
-The local Home Assistant profile exposes display selection, a power switch with ON disabled by default, and freshness/sample/command diagnostics. It does not expose a humidifier entity, native humidity measurements or targets, faults, purge, locator or continuous-mode selection. It cannot replace the cloud profile's full entity set or existing humidity automations. See [Local control and setup](LOCAL_CONTROL.md).
+The local Home Assistant profile implements a dehumidifier entity with target and auto/continuous controls, a separate Power switch, display selection, and freshness/sample/command diagnostics: six entities in total. Both power controls share one coordinator, and ON is disabled by default. The dehumidifier keeps the cloud profile's stable identity; measured intake humidity remains unknown, and faults, purge and locator are not exposed. The HA profile has synthetic socket/integration coverage but has not yet been commissioned on hardware. Review dependent automations against those limits. See [Local control and setup](LOCAL_CONTROL.md).
 
 This evidence is specific to one already-provisioned controller. Neither Lite app compatibility nor a matching enclosure establishes native TCP compatibility. Cold boot, persistent DNS/routing behavior, sustained offline operation and additional model/controller revisions remain unverified. The separate Sentinel/AlorAir-C TCP6200 implementation is not a supported alternative profile here.
 

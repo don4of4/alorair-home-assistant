@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 from homeassistant import config_entries
+from homeassistant.core import State
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 from test_integration import MAC, entry, status
@@ -62,11 +63,13 @@ class Appliance:
         self.parser = FrameStream(bytes.fromhex(MAC))
         self.power = False
         self.fahrenheit = True
+        self.target = 20
 
     async def report(self, opcode=0x1C):
         data = bytearray(34)
         data[3] = int(self.power)
         data[32] = int(self.fahrenheit)
+        data[23] = self.target
         self.writer.write(Frame(bytes.fromhex(MAC), 0, 7, opcode, bytes(data)).encode())
         await self.writer.drain()
 
@@ -113,6 +116,7 @@ async def test_local_entry_waits_for_device_without_cloud_or_fabricated_entities
     entities = er.async_entries_for_config_entry(registry, configured.entry_id)
     assert {item.unique_id for item in entities} == {
         f"{MAC}_power",
+        f"{MAC}_dehumidifier",
         f"{MAC}_temperatureUnit",
         f"{MAC}_fresh",
         f"{MAC}_sample_time",
@@ -125,7 +129,7 @@ async def test_local_entry_waits_for_device_without_cloud_or_fabricated_entities
     diagnostics = await async_get_config_entry_diagnostics(hass, configured)
     assert diagnostics["transport"] == "local_tcp_push"
     assert diagnostics["state"]["errCode"] is None
-    assert diagnostics["measurements"]["currentHumidity"] is None
+    assert diagnostics["measurements"]["currentHumidity"] == 20
     assert all(value not in str(diagnostics) for value in (MAC, "127.0.0.1", "password", "token"))
     await appliance.close()
     await eventually(lambda: hass.states.get(power_id).state == "unavailable")
@@ -370,13 +374,89 @@ async def test_options_reload_local_listener_once_and_do_not_add_cloud_options(h
     assert configured.options == {"allow_local_power": True}
 
 
-async def test_unsupported_local_humidity_action_does_not_write(hass, unit):
+async def test_unsupported_local_target_and_cloud_action_do_not_write(hass, unit):
     configured, appliance = unit
     await appliance.report()
     await eventually(lambda: not configured.runtime_data.status_stale)
     with pytest.raises(HomeAssistantError, match="not supported"):
-        await configured.runtime_data.async_command("async_set_humidity", (50,), "currentHumidity", 50)
+        await configured.runtime_data.async_command("async_set_humidity", (51,), "currentHumidity", 51)
     with pytest.raises(HomeAssistantError, match="cloud actions"):
         await configured.runtime_data.async_experimental_action("firmware_check", {})
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(appliance.reader.read(1), 0.02)
+
+
+async def test_local_humidifier_services_confirm_targets_and_preserve_identity(hass, unit):
+    configured, appliance = unit
+    appliance.power = True
+    await appliance.report()
+    await eventually(lambda: not configured.runtime_data.status_stale)
+    registry = er.async_get(hass)
+    humidifier_id = registry.async_get_entity_id("humidifier", DOMAIN, f"{MAC}_dehumidifier")
+    state = hass.states.get(humidifier_id)
+    assert state.state == "on" and state.attributes["mode"] == "continuous"
+    assert state.attributes.get("current_humidity") is None
+    assert "fault_codes" not in state.attributes
+    assert "cloud_polled_at" not in state.attributes
+    for service, parameters, target in (
+        ("set_humidity", {"humidity": 50}, 50),
+        ("set_humidity", {"humidity": 55}, 55),
+        ("set_mode", {"mode": "continuous"}, 20),
+        ("set_mode", {"mode": "auto"}, 55),
+    ):
+        previous = configured.runtime_data.data["currentHumidity"]
+        action = asyncio.create_task(
+            hass.services.async_call("humidifier", service, {"entity_id": humidifier_id, **parameters}, blocking=True)
+        )
+        command = await appliance.command()
+        assert (command.opcode, command.data) == (0x23, bytes([target]))
+        assert not action.done()
+        assert configured.runtime_data.data["currentHumidity"] == previous
+        appliance.target = target
+        await appliance.report(0x23)
+        await action
+        assert configured.runtime_data.data["currentHumidity"] == target
+    await eventually(lambda: hass.states.get(humidifier_id).attributes["humidity"] == 55)
+    assert hass.states.get(humidifier_id).attributes["last_auto_humidity"] == 55
+
+
+async def test_local_restores_auto_target_before_initial_device_connection_without_commands(hass):
+    configured = local_entry()
+    previous = State("humidifier.previous", "off", {"last_auto_humidity": 55})
+    with patch(
+        "custom_components.alorair_lite.humidifier.AlorairLocalHumidifier.async_get_last_state",
+        AsyncMock(return_value=previous),
+    ):
+        await hass.config_entries.async_add(configured)
+        await hass.async_block_till_done()
+    assert configured.runtime_data.last_auto_humidity == 55
+    assert configured.runtime_data.data == {}
+    assert configured.runtime_data.last_command is None
+
+
+async def test_local_humidifier_hides_stale_fields_but_keeps_normal_off_reachable(hass, unit):
+    configured, appliance = unit
+    appliance.power = True
+    appliance.target = 50
+    await appliance.report()
+    await eventually(lambda: not configured.runtime_data.status_stale)
+    humidifier_id = er.async_get(hass).async_get_entity_id("humidifier", DOMAIN, f"{MAC}_dehumidifier")
+    configured.runtime_data._received_monotonic -= 36
+    configured.runtime_data.async_update_listeners()
+    await hass.async_block_till_done()
+    state = hass.states.get(humidifier_id)
+    assert state.state == "unknown"
+    assert state.attributes["mode"] is None and state.attributes.get("humidity") is None
+    with pytest.raises(ServiceValidationError, match="Fresh local"):
+        await hass.services.async_call(
+            "humidifier", "set_humidity", {"entity_id": humidifier_id, "humidity": 55}, blocking=True
+        )
+    action = asyncio.create_task(
+        hass.services.async_call("humidifier", "turn_off", {"entity_id": humidifier_id}, blocking=True)
+    )
+    command = await appliance.command()
+    assert (command.opcode, command.data) == (0x21, b"\x00")
+    appliance.power = False
+    await appliance.report(0x21)
+    await action
+    await eventually(lambda: hass.states.get(humidifier_id).state == "off")

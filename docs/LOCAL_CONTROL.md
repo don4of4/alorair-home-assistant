@@ -4,18 +4,21 @@ The experimental local profile accepts the dehumidifier's native inbound TCP con
 
 **Build availability:** this guide describes the experimental local development change. The v0.2.2 release contains only the cloud profile; installing that release will not add the local connection menu.
 
-**This is an incomplete experimental profile, not a drop-in replacement for the cloud profile.** A standalone local endpoint has been tested on one Lite-equipped Storm Pro for display-unit changes and one warm TCP reconnect. Local power commands and the new Home Assistant profile have not yet been commissioned on an appliance. Sustained offline drying and cold-start behavior remain unverified.
+**The HA profile remains experimental and has not yet been installed for appliance commissioning.** A standalone local endpoint has confirmed power ON/OFF, display-unit changes and one warm TCP reconnect on one Lite-equipped Storm Pro. A subsequent standalone local trial completed ON → 50 → 55 → 20 → OFF with matching reports on the same connection, restoring continuous mode before OFF. Only numeric targets 50% and 55%, plus continuous 20, have been exercised locally; the HA profile implements the wider app-defined target range. Sustained offline drying and cold-start behavior remain unverified.
 
 ## Available controls and evidence
 
 | Capability | Experimental local profile | Evidence and limits |
 | --- | --- | --- |
 | Temperature display | Celsius/Fahrenheit select | A local endpoint completed Fahrenheit → Celsius → Fahrenheit with matching device reports. This changes display units, not a measured temperature sensor. |
-| Power | Power switch; starting requires the **Allow experimental local power-on** option, off by default | Native on/off frames and matching state reports were captured during cloud control. Local live power commissioning is still pending. A power report does not measure compressor operation. |
+| Power | Dehumidifier controls and a Power switch share the same coordinator; starting requires **Allow experimental local power-on**, off by default | A standalone local trial sent ON once and then OFF, with matching native reports for both. A power report does not measure compressor operation. |
 | Freshness and sample time | Diagnostics for locally received reports | Device timestamps in the observed frames were zero; sample time records local receipt. |
 | Last command | Command feedback diagnostic | Distinguishes a matched device report from an uncertain result; a queued command is not confirmation. |
-| Humidity and continuous mode | Not exposed | Native humidity measurements, targets and mode fields have not been sufficiently validated. No local humidifier entity is created. |
+| Target and continuous mode | Dehumidifier entity implements 25–80% targets in 5% steps and auto/continuous modes | Cloud wire mapping was followed by a standalone local ON → 50 → 55 → 20 → OFF trial with matching reports; 20 selects continuous mode. Other numeric targets are untested locally. Ordinary changes require fresh reported ON, rechecked at the native send boundary. |
+| Measured humidity | Unknown | Intake/outlet humidity fields are not mapped. A target value is not measured room humidity. |
 | Faults, purge and locator | Not exposed | The native fields/commands have not been validated for this profile. Absence of a fault entity does not mean the unit is fault-free. |
+
+The local profile creates six entities: dehumidifier, Power switch, Temperature display, Fresh device sample, Device sample time and Last command. The power trial's temporary routing was removed cleanly, and Home Assistant subsequently showed fresh cloud OFF state. This verified recovery of the cloud installation, not live installation of the new HA profile.
 
 The cloud profile retains its existing controls. See [Compatibility](COMPATIBILITY.md) for model/controller limits and [Protocol](PROTOCOL.md#experimental-local-tcp-transport) for the measured native contract.
 
@@ -58,7 +61,7 @@ Local status is pushed by the device rather than cloud-polled. The profile marks
 
 Use the existing integration entry's **Reconfigure** action and select **Experimental local connection**. Reconfiguration keeps that configuration entry and device identity, and replaces its cloud credentials with the local connection settings. It does not copy credentials into the local client, silently create a second device, or enable cloud fallback. Historical Home Assistant backups may still contain the previous credentials.
 
-The available entities change substantially: the local profile provides a power switch and display/diagnostic entities, with no humidity controller or humidity readings. Preserving the entry identity does **not** make existing humidity entities or automations work with this reduced profile. Record the existing setup, make a backup, stop the unit normally, and review every dependent automation before changing transport. Inspect the actual entity IDs after reconfiguration.
+The local dehumidifier uses the same device-based unique identity as the cloud dehumidifier, allowing Home Assistant to retain its registered entity ID during reconfiguration. Its target and auto/continuous controls are implemented, but measured intake humidity remains unknown and cloud fault/purge/locator entities are absent locally. An automation that depends on those sensors or controls still needs review. Record the existing setup, make a backup, stop the unit normally, and inspect actual entity IDs and each dependent automation after changing transport.
 
 To return to cloud operation, restore the original network path and reconfigure the same entry as **AlorAir-Lite cloud**, supplying the owning account credentials again. Verify a fresh cloud sample and the required entities before resuming dependent automations. Network rollback and Home Assistant reconfiguration are separate steps; neither happens automatically when the other fails.
 
@@ -68,7 +71,7 @@ To return to cloud operation, restore the original network path and reconfigure 
 
 The native client serializes commands, spaces writes and waits for a matching later status opcode/value. Its receive boundary excludes both partially parsed frames and complete reports already buffered before the command. A timeout or disconnection leaves delivery uncertain; commands are not automatically replayed after reconnect. Changing profiles, unloading the integration, or removing a route is not a stop command. The firmware retains its own operating and shutdown behavior.
 
-Power support is for deliberate commissioning at this stage. The profile cannot select a humidity target, verify continuous mode or interpret faults. Do not interpret the presence of an ON switch as a completed validation of autonomous drying.
+The dehumidifier can request a numeric target or auto/continuous mode after fresh reported ON. The native target is exposed separately from measured humidity; continuous mode uses the special target 20 rather than a measured 20% RH value. Auto uses the last observed numeric target or a valid target restored from Home Assistant's saved entity state, with a 50% fallback when neither exists. Restoring that saved preference sends no device command and does not fabricate a current target while waiting for reports. Standalone local changes to 50%, 55% and continuous mode have matching report confirmation. The HA profile is still uncommissioned on hardware, and faults are not interpreted. These controls do not establish autonomous drying or target accuracy on an untested controller.
 
 ## Troubleshooting and remaining work
 
@@ -79,8 +82,9 @@ Power support is for deliberate commissioning at this stage. The profile cannot 
 | Device is rejected | Check the full Wi-Fi MAC and source IPv4. Another app family, address translation or a controller revision may use a different contract. |
 | ON is rejected | Local power is disabled by default. Check the option, freshness and restart protection; do not rapidly retry uncertain commands. |
 | Cloud app stops updating | The local route replaces the selected device connection. The local client does not forward cloud traffic or automatically fall back. |
-| Humidity/fault/purge/locator entities are absent | These capabilities are not mapped in the experimental local profile. Use the cloud profile for its validated entity set. |
+| Intake humidity is unknown, or fault/purge/locator entities are absent | These native measurements/controls are not mapped. The dehumidifier's target and mode do not supply measured humidity or fault status. |
+| Target or mode change is rejected | Wait for fresh reported ON before changing humidity. Only targets 25–80% in 5% steps, or the continuous-mode action, are accepted. |
 
-Remaining validation includes live local power on/off, the Home Assistant profile on a real appliance, sustained offline operation, cold boot and address/DNS changes, and additional native measurements/controls. The current evidence covers one already-provisioned unit and one warm reconnect. It does not establish complete internet independence for every firmware feature or compatibility with every Lite model.
+Remaining validation includes the Home Assistant profile on a real appliance, other numeric humidity targets, sustained offline operation, cold boot and address/DNS changes, and additional native measurements/controls. Confirmed standalone results cover power ON/OFF, targets 50%/55%, continuous-mode restoration, display changes and one warm reconnect on one already-provisioned unit. Independent capture analysis verified the humidity sequence, scoped rollback and fresh cloud OFF reports afterward; see the [validation record](LIVE_VALIDATION.md#experimental-local-commissioning). They do not establish complete internet independence for every firmware feature or compatibility with every Lite model.
 
 Report the integration and Home Assistant versions, model/controller revision, selected profile and redacted error/diagnostic state. Keep MACs, IPs, account details, packet captures and network rules out of public reports. See [Security](SECURITY.md#experimental-local-transport).

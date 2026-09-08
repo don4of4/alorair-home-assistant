@@ -121,7 +121,7 @@ Unused helper definitions mention identity reads and MQTT configuration, but no 
 
 A separate maintainer's [local TCP bridge](https://github.com/sethrobin/alorair-local/tree/d056eaa792fb70e1a5c097be87da1bde16080afc) reports a working Sentinel HDi65S / AlorAir-C implementation using the device's outbound TCP connection to port 6200. Several command numbers and the reserved/MAC envelope structure resemble the Lite contract, making this a useful interoperability lead. That controller's continuous-mode value and state interpretation differ. The [wire protocol](https://github.com/sethrobin/alorair-local/blob/d056eaa792fb70e1a5c097be87da1bde16080afc/PROTOCOL.md) must not be assumed valid for a Storm/Lite unit without its own capture and validation.
 
-Subsequent Storm/Lite captures established the native contract below, and a standalone local endpoint demonstrated display changes and one warm reconnect. These observations do not validate every upstream field or command, a BLE control path, or a complete offline Home Assistant installation.
+Subsequent Storm/Lite captures established the native contract below, and a standalone local endpoint confirmed power ON/OFF, targets 50/55, continuous-mode restoration, display changes and one warm reconnect. These observations do not validate every upstream field or command, a BLE control path, or a complete offline Home Assistant installation.
 
 ## Experimental local TCP transport
 
@@ -156,12 +156,14 @@ The complete frame length is **`29 + N`**. The checksum's high byte is not a mes
 | Temperature display selection | `09 / 24` | `00` Celsius, `01` Fahrenheit | Both changes and restoration were confirmed through local device reports. |
 | Baseline device status | `07 / 1C` | 34 bytes on the tested unit | Observed periodically while off and across warm reconnection. |
 | Display command report | `07 / 24` | 34 bytes | Data offset 32 changes between `00`/`01`; full-frame offset 58. |
-| Power request | `09 / 21` | `01` on, `00` off | Captured from the vendor connection; local live power test remains pending. |
-| Power command report | `07 / 21` | 34 bytes | Data offset 3 (full-frame offset 29) changed between `01`/`00` after captured on/off requests. |
+| Power request | `09 / 21` | `01` on, `00` off | Captured from the vendor connection and subsequently confirmed through a standalone local ON/OFF trial. |
+| Power command report | `07 / 21` | 34 bytes | Data offset 3 (full-frame offset 29) changed between `01`/`00` after on/off requests, including local commissioning. |
+| Target/continuous request | `09 / 23` | One binary byte: 50=`0x32`, 55=`0x37`, continuous 20=`0x14` | Mapped from cloud-originated commands, then confirmed in a standalone local 50 → 55 → 20 sequence while on. No other numeric targets have been exercised locally. |
+| Target command report | `07 / 23` | 34 bytes | Target at data offset 23 (full-frame offset 49). The captured 55 → 50 echo changed only that data byte. |
 
 Only the observed native power values `00` and `01` map to off/on. Other values are unknown; the cloud interpretation of `powerStatus=02` is not transferred into the native decoder. The reports establish device-reported enabled state, not compressor or pump current. Another field changed during shutdown, but its physical meaning remains unmapped.
 
-Native humidity measurements/targets, continuous-mode selection, faults, purge, locator and specific-humidity display settings are not validated here. Similar opcode numbers in the app or another controller's project are insufficient to expose them as local controls.
+The native target command carries one **binary** byte, unlike the cloud API's decimal-string value. The decoder accepts 20 (continuous) or 25–80 in steps of five; other reported values remain unknown. This is a target, not measured intake RH. The HA dehumidifier maps it to target and auto/continuous controls while leaving current humidity unknown. Native intake/outlet humidity, faults, purge, locator and specific-humidity display settings remain unmapped. Similar opcode numbers in another controller's project do not validate those fields.
 
 ### Freshness, command matching and cancellation
 
@@ -173,8 +175,8 @@ A command result requires a matching opcode/value on the same connection, after 
 
 Timeout or disconnection after queueing is reported as uncertain. The client never automatically replays that command on reconnection. Caller cancellation cancels and joins a pending send before returning, so a delayed ON cannot be transmitted behind a subsequent OFF. Cleanup closes accepted sockets, drains owned tasks and releases the listener. These software checks are covered with synthetic socket tests; they do not establish physical shutdown during an appliance/network failure.
 
-Fresh status is required before starting or changing display units. A safety OFF request is permitted on a verified connected session even if its status has become stale, but still needs a matching later report for confirmation. The Home Assistant power option gates ON and is disabled by default. No local fault interpretation or humidity control is inferred from this exception.
+Fresh status is required before starting, changing display units or setting humidity. Ordinary HA target/mode changes also require reported ON, checked again at the native write boundary after pacing. An OFF report arriving during pacing rejects the target before bytes are sent. A safety OFF request is permitted on a verified connected session even if its status has become stale, but still needs a matching later report for confirmation. The client also has an explicit stale-status override for bounded restoration of a previously known humidity target; ordinary HA actions do not use that override. Identity, connection and later-report checks remain mandatory. The Home Assistant power option gates ON from both local power controls and is disabled by default.
 
 ### Validation boundary
 
-A standalone endpoint completed local Fahrenheit → Celsius → Fahrenheit and one deliberate warm disconnect/reconnect, with fresh status/heartbeat afterward. Scoped routing was removed and fresh vendor application exchanges were observed after rollback. Power frames are capture-mapped, not yet locally appliance-tested. The new Home Assistant local profile, cold boot, future destination/DNS changes and sustained offline operation remain to be commissioned. This is an experimental transport rather than complete offline support.
+A standalone endpoint completed local Fahrenheit → Celsius → Fahrenheit and one deliberate warm disconnect/reconnect, with fresh status/heartbeat afterward. A later standalone trial confirmed native ON and OFF. Scoped rollback rules were removed cleanly, and fresh cloud OFF state was verified in Home Assistant after recovery. A subsequent standalone local trial completed ON → 50 → 55 → 20 → OFF with matching same-session reports and continuous mode restored. Only those target values were exercised locally. Independent capture analysis verified the matching commands, three-minute OFF interval, scoped rollback and fresh cloud OFF reports afterward. See [Validation](LIVE_VALIDATION.md#experimental-local-commissioning). The new HA profile has not yet been installed for appliance commissioning. Cold boot, future destination/DNS changes and sustained offline operation remain unverified.

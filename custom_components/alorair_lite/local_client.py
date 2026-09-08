@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from .local_protocol import Frame, FrameStream, observed_status
+from .local_protocol import Frame, FrameStream, humidity_target, observed_status
 
 COMMAND_SPACING = 1.1
 READ_BYTES = 2048
@@ -105,6 +105,7 @@ class DeviceStatus:
     power: bool | None
     temperature_unit: str
     event_opcode: int
+    target_humidity: int | None = None
 
 
 @dataclass
@@ -116,6 +117,7 @@ class _Pending:
     receive_sequence: int = 0
     byte_boundary: int = 0
     sent_monotonic: float | None = None
+    allow_stale: bool = False
 
 
 class _CountingReader(asyncio.StreamReader):
@@ -295,6 +297,7 @@ class LocalClient:
                             decoded["power"],
                             decoded["temperature_display"],
                             frame.opcode,
+                            decoded["target_humidity"],
                         )
                         self._last_status = status
                         pending = session.pending
@@ -306,7 +309,13 @@ class LocalClient:
                             and session.receive_sequence > pending.receive_sequence
                             and frame_offset >= pending.byte_boundary
                         ):
-                            actual = status.power if pending.opcode == 0x21 else status.temperature_unit
+                            actual = (
+                                status.power
+                                if pending.opcode == 0x21
+                                else status.target_humidity
+                                if pending.opcode == 0x23
+                                else status.temperature_unit
+                            )
                             if actual == pending.expected:
                                 pending.future.set_result(status)
                         self._enqueue_callback(session.session_id, "status", status)
@@ -357,7 +366,7 @@ class LocalClient:
                 if self._closing or self._session is not session or session.writer.is_closing():
                     raise NotConnectedError("Connection closed before sending")
                 if pending is not None:
-                    self._require_fresh_status(session, opcode == 0x21 and data == b"\x00")
+                    self._require_fresh_status(session, pending.allow_stale or (opcode == 0x21 and data == b"\x00"))
                 delay = 0.0
                 if pending is not None and self._last_outbound_time is not None:
                     delay = max(
@@ -365,6 +374,13 @@ class LocalClient:
                         COMMAND_SPACING - (time.monotonic() - self._last_outbound_time),
                     )
                 if delay == 0:
+                    if (
+                        opcode == 0x23
+                        and pending is not None
+                        and not pending.allow_stale
+                        and (self._last_status is None or self._last_status.power is not True)
+                    ):
+                        raise CommandNotSentError("Appliance must report enabled before changing humidity")
                     timestamp = int(time.time())
                     if self._last_outbound_timestamp is not None:
                         timestamp = max(timestamp, self._last_outbound_timestamp + 1)
@@ -394,9 +410,17 @@ class LocalClient:
             raise ValueError("Temperature unit must be celsius or fahrenheit")
         return await self._command(0x24, bytes([int(unit == "fahrenheit")]), unit)
 
-    async def _command(self, opcode, data, expected):
-        session = self._require_fresh_status(allow_stale=opcode == 0x21 and expected is False)
-        task = asyncio.create_task(self._execute_command(session, opcode, data, expected))
+    async def async_set_humidity(self, target: int, *, allow_stale: bool = False) -> DeviceStatus:
+        """Require reported ON at send time, except for explicit bounded restoration."""
+        if humidity_target(target) is None:
+            raise ValueError("Humidity target must be 20 or 25–80 in steps of five")
+        if type(allow_stale) is not bool:
+            raise ValueError("Restoration freshness override must be boolean")
+        return await self._command(0x23, bytes([target]), target, allow_stale=allow_stale)
+
+    async def _command(self, opcode, data, expected, *, allow_stale=False):
+        session = self._require_fresh_status(allow_stale=allow_stale or (opcode == 0x21 and expected is False))
+        task = asyncio.create_task(self._execute_command(session, opcode, data, expected, allow_stale))
         self._track(task, self._command_tasks)
         try:
             await asyncio.wait({task})
@@ -423,14 +447,14 @@ class LocalClient:
             pending.byte_boundary,
         )
 
-    async def _execute_command(self, session, opcode, data, expected):
+    async def _execute_command(self, session, opcode, data, expected, allow_stale=False):
         pending = None
         acquired = False
         try:
             await asyncio.wait_for(self._command_lock.acquire(), self.config.command_timeout)
             acquired = True
-            self._require_fresh_status(session, opcode == 0x21 and expected is False)
-            pending = _Pending(opcode, expected, asyncio.get_running_loop().create_future())
+            self._require_fresh_status(session, allow_stale or (opcode == 0x21 and expected is False))
+            pending = _Pending(opcode, expected, asyncio.get_running_loop().create_future(), allow_stale=allow_stale)
             session.pending = pending
             await asyncio.wait_for(
                 self._send(session, opcode, data, pending),

@@ -4,7 +4,7 @@ An unofficial Home Assistant integration for **AlorAir-Lite** dehumidifiers. The
 
 **The cloud profile was live-tested with one Storm Pro using AlorAir-Lite on Home Assistant 2026.6.2.** Power, humidity, continuous mode, purge, display units and locate were confirmed through fresh device reports. Other models remain unverified. This is telemetry confirmation, not independent physical observation. See [Compatibility](docs/COMPATIBILITY.md) and [Validation](docs/LIVE_VALIDATION.md).
 
-The local profile in this source branch is **unreleased**; published v0.2.2 contains the cloud profile only. Local support is incomplete: a standalone endpoint demonstrated display-unit changes and one warm reconnect, but local power and the new HA profile still need appliance commissioning. It has no humidity controller, humidity readings, faults, purge or locator entities, so it is not a drop-in production migration. [Local setup and evidence](docs/LOCAL_CONTROL.md)
+The local profile in this source branch is **unreleased**; published v0.2.2 contains the cloud profile only. A standalone local endpoint confirmed power ON/OFF, targets 50% and 55%, restoration to continuous mode, display-unit changes and one warm reconnect. A local Home Assistant dehumidifier entity implements these controls; other numeric targets have not been exercised locally. The new HA profile has not yet been installed on the appliance's Home Assistant instance. Intake humidity, faults, purge and locator remain unavailable locally. [Local setup and evidence](docs/LOCAL_CONTROL.md)
 
 ## Get started
 

@@ -1,6 +1,6 @@
 # Validation
 
-The integration is tested against Home Assistant 2026.6.2 using its actual config-flow, entity, service and reload machinery. Client tests use controlled HTTP servers to verify authentication, exact-device ownership, request formats, bounded failures and uncertain delivery without replay.
+The integration is tested against Home Assistant 2026.6.2 using its actual config-flow, entity, service and reload machinery. Client tests use controlled HTTP and TCP servers to verify authentication, exact-device ownership, request formats, bounded failures and uncertain delivery without replay.
 
 ## Hardware coverage
 
@@ -27,8 +27,24 @@ The experimental service was enabled through the native options flow and invoked
 
 The failed history requests match the app's endpoint and parameter formats. They are not evidence that the service works reliably, and an empty result is not substituted for a failed request. Read failures leave the preceding device-command diagnostic intact. Cloud behavior can change after this observation.
 
+## Experimental local commissioning
+
+The following evidence was established on the same already-provisioned Lite controller on September 7, 2026. Standalone endpoint trials and cloud-originated wire captures are separate from commissioning the new Home Assistant local profile.
+
+| Operation | Evidence | Remaining limit |
+| --- | --- | --- |
+| Local power ON/OFF | A standalone local endpoint observed the required OFF interval, requested ON once and then OFF, and received matching native reports for both. | Enabled-state telemetry does not measure compressor operation or drying output. |
+| Local temperature display | Fahrenheit → Celsius → Fahrenheit completed with matching native reports. | This changes display units, not the measured temperature. |
+| Warm TCP reconnect | After a deliberate connection close, the device opened a fresh local connection and reported status/heartbeat. | Cold boot and sustained reconnection behavior remain untested. |
+| Power-trial rollback | Temporary scoped routing rules were removed cleanly, and Home Assistant subsequently showed fresh cloud OFF state. | Network recovery does not guarantee a shutdown command during an outage. |
+| Native humidity target/continuous mapping | Cloud-originated native commands established 50 → 55 → 50 → 20. Opcode `09/23` carries one binary byte; matching `07/23` reports carry the target at data offset 23. The 55 → 50 echo changed only that data byte. | The mapping describes target selection, not measured humidity. |
+| Standalone local humidity trial | ON → 50 → 55 → 20 → OFF completed with matching same-session power/target reports. Continuous mode was restored and the runner reported no evidence-write failure. | Only numeric targets 50%/55% and continuous 20 were exercised. Independent capture analysis verified all five matching commands, the three-minute OFF interval, scoped rule removal and fresh cloud OFF reports after rollback. |
+| Home Assistant local profile | Synthetic sockets exercise real HA setup, entities, services, reconfiguration and cleanup. Six entities include a dehumidifier retaining its cloud-profile identity, with target and auto/continuous controls implemented. | This profile has not yet been installed for live appliance commissioning. Intake humidity remains unknown; native fault, purge and locator controls are absent. |
+
+Cold boot, long-running offline drying, future destination/DNS changes and other model/controller revisions remain unverified. Private captures and network details are excluded from this repository; the public protocol and tests use generic field descriptions and synthetic identities. See [Local control](LOCAL_CONTROL.md) for setup requirements and [Protocol](PROTOCOL.md#experimental-local-tcp-transport) for the decoding and acknowledgement rules.
+
 ## Contributor checks
 
-Run `make check` to execute Ruff and the integration tests. Temporary Home Assistant instances and HTTP servers are stopped by the tests. Use sanitized fixtures; never commit account credentials, device/network identifiers, raw packet captures or extracted vendor application code.
+Run `make check` to execute Ruff and the integration tests. Temporary Home Assistant instances and HTTP/TCP servers are stopped by the tests. Use sanitized fixtures; never commit account credentials, device/network identifiers, raw packet captures or extracted vendor application code.
 
 When validating a new model, record its exact label/controller generation, app name/version, firmware if known, Home Assistant version, tested integration revision and which individual operations returned fresh feedback. Distinguish supported, experimentally observed and untested operations. Keep installation-specific schedules and room details outside the integration repository.

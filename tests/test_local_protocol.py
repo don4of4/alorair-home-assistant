@@ -5,6 +5,7 @@ import unittest
 from custom_components.alorair_lite.local_protocol import (
     Frame,
     FrameStream,
+    humidity_command,
     keepalive_response,
     observed_status,
     power_command,
@@ -16,6 +17,29 @@ MAC = bytes.fromhex("020000000001")
 
 class ProtocolTests(unittest.TestCase):
     """Synthetic protocol cases contain only the locally administered test MAC."""
+
+    def test_humidity_builder_uses_one_binary_byte(self):
+        for target, encoded in ((20, b"\x14"), (50, b"\x32"), (55, b"\x37"), (80, b"\x50")):
+            with self.subTest(target=target):
+                raw = humidity_command(MAC, target, 1234)
+                self.assertEqual(len(raw), 30)
+                self.assertEqual(raw[18:26], bytes.fromhex("0001092300000000"))
+                decoded = Frame.decode(raw, MAC)
+                self.assertEqual((decoded.function, decoded.opcode, decoded.data), (9, 0x23, encoded))
+        for value in (True, False, 0, 19, 21, 24, 26, 81, 255, 50.0, "50", None):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                humidity_command(MAC, value, 1234)
+
+    def test_target_decodes_only_supported_values_at_offset_23(self):
+        supported = {20, *range(25, 81, 5)}
+        for target in range(256):
+            data = bytearray(34)
+            data[22], data[23], data[24], data[32] = 55, target, 50, 1
+            result = observed_status(Frame(MAC, 0, 7, 0x23, bytes(data)))
+            with self.subTest(target=target):
+                self.assertEqual(result["target_humidity"], target if target in supported else None)
+                self.assertNotIn("intake_humidity", result)
+                self.assertNotIn("fault", result)
 
     def test_power_builder_accepts_only_explicit_booleans(self):
         for value in (0, 1, None, "on", b"\x01"):
@@ -46,7 +70,7 @@ class ProtocolTests(unittest.TestCase):
                 self.assertEqual(result["event_opcode"], 0x21)
                 self.assertEqual(result["temperature_display"], "fahrenheit")
                 self.assertNotIn("compressor", result)
-                self.assertEqual(set(result), {"power", "event_opcode", "temperature_display"})
+                self.assertEqual(set(result), {"power", "event_opcode", "temperature_display", "target_humidity"})
 
     def test_data_length_includes_only_data(self):
         raw = temperature_command(MAC, True, 1234)

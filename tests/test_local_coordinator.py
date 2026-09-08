@@ -24,7 +24,7 @@ from custom_components.alorair_lite.local_client import (
 )
 
 
-def sample(*, session=1, sequence=1, power=False, unit="fahrenheit", opcode=0x1C, age=0, received_at=None):
+def sample(*, session=1, sequence=1, power=False, unit="fahrenheit", opcode=0x1C, age=0, received_at=None, target=None):
     return DeviceStatus(
         session,
         sequence,
@@ -33,6 +33,7 @@ def sample(*, session=1, sequence=1, power=False, unit="fahrenheit", opcode=0x1C
         power,
         unit,
         opcode,
+        target,
     )
 
 
@@ -49,6 +50,7 @@ class FakeClient:
         self.async_close = AsyncMock(side_effect=self.close)
         self.async_set_power = AsyncMock(side_effect=self.power)
         self.async_set_temperature_unit = AsyncMock(side_effect=self.temperature)
+        self.async_set_humidity = AsyncMock(side_effect=self.humidity)
 
     def close(self):
         self.connected = False
@@ -84,6 +86,19 @@ class FakeClient:
             power=previous.power,
             unit=unit,
             opcode=0x24,
+        )
+        self.publish(result)
+        return result
+
+    async def humidity(self, target):
+        previous = self.last_status
+        result = sample(
+            session=previous.session_id,
+            sequence=previous.receive_sequence + 1,
+            power=previous.power,
+            unit=previous.temperature_unit,
+            opcode=0x23,
+            target=target,
         )
         self.publish(result)
         return result
@@ -129,7 +144,7 @@ async def test_initial_listener_has_no_cloud_poll_or_invented_state(unit):
     unit.client.publish(sample())
     await unit.async_request_refresh()
     assert unit.last_update_success
-    assert set(unit.data) == {"powerStatus", "temperatureUnit", "updateTimeStr", "observed_at_utc"}
+    assert set(unit.data) == {"powerStatus", "temperatureUnit", "currentHumidity", "updateTimeStr", "observed_at_utc"}
     assert unit.data["powerStatus"] == "00" and unit.data["temperatureUnit"] == 1
     assert not hasattr(unit.client, "async_status")
 
@@ -140,7 +155,7 @@ async def test_unknown_power_remains_unknown_and_receipt_age_uses_monotonic_time
     assert unit.data["powerStatus"] is None
     assert unit.data["updateTimeStr"] == past_wall_time.isoformat()
     assert not unit.status_stale
-    assert "errCode" not in unit.data and "currentHumidity" not in unit.data
+    assert "errCode" not in unit.data and unit.data["currentHumidity"] is None
 
 
 async def test_watchdog_marks_stale_and_recovers_without_polling(unit):
@@ -237,7 +252,8 @@ async def test_off_restoration_uses_verified_session_even_with_stale_or_no_statu
     ("method", "args", "key", "wanted"),
     [
         ("async_purge", (), "drainStatus", "01"),
-        ("async_set_humidity", (50,), "currentHumidity", 50),
+        ("async_set_humidity", (51,), "currentHumidity", 51),
+        ("async_set_humidity", (50,), "currentHumidity", 55),
         ("async_set_power", (1,), "powerStatus", "01"),
         ("async_set_power", (True,), "powerStatus", "00"),
         ("async_set_temperature_unit", ("celsius",), "temperatureUnit", "01"),
@@ -264,6 +280,41 @@ async def test_display_changes_work_while_off_and_returned_report_confirms(unit)
     assert unit.last_command.status == "device_reported"
     assert unit.last_command.reported_at is not None
     unit.client.async_set_temperature_unit.assert_awaited_once_with("celsius")
+
+
+async def test_humidity_requires_on_even_without_caller_guard_and_tracks_auto_target(unit):
+    unit.client.publish(sample(target=20))
+    with pytest.raises(ServiceValidationError, match="Turn the dehumidifier on"):
+        await unit.async_command("async_set_humidity", (50,), "currentHumidity", 50)
+    unit.client.async_set_humidity.assert_not_awaited()
+    unit.client.publish(sample(sequence=2, power=True, target=20))
+    for target in (50, 55, 20):
+        await unit.async_command("async_set_humidity", (target,), "currentHumidity", target)
+        assert unit.data["currentHumidity"] == target
+        assert unit.last_command.status == "device_reported"
+        assert unit.last_command.requested == target
+    assert unit.last_auto_humidity == 55
+    unit.client.publish(sample(sequence=6, power=True, target=None))
+    assert unit.data["currentHumidity"] is None
+    assert unit.last_auto_humidity == 55
+
+
+async def test_humidity_ack_does_not_overwrite_a_later_target_in_same_read(unit):
+    unit.client.publish(sample(power=True, target=20))
+
+    async def coalesced(target):
+        ack = sample(sequence=2, power=True, opcode=0x23, target=target)
+        latest = replace(ack, event_opcode=0x1C, target_humidity=55)
+        unit.client.last_status = latest
+        unit.client.on_status(ack)
+        unit.client.on_status(latest)
+        return ack
+
+    unit.client.async_set_humidity.side_effect = coalesced
+    await unit.async_command("async_set_humidity", (50,), "currentHumidity", 50)
+    assert unit.last_command.status == "device_reported"
+    assert unit.last_command.requested == 50
+    assert unit.data["currentHumidity"] == 55
 
 
 @pytest.mark.parametrize("unit", [True], indirect=True)

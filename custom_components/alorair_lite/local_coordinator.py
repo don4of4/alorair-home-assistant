@@ -34,20 +34,20 @@ class LocalCommandFeedback:
     issued_at: datetime
     deadline: float
     field: str
-    requested: str
+    requested: str | int
     acknowledged: bool = False
     reported_at: datetime | None = None
 
 
 @dataclass(frozen=True)
 class LocalPendingCommand:
-    wanted: str
+    wanted: str | int
     deadline: float
     issued_monotonic: float
 
 
 class LocalAlorairCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Expose only observed power and temperature-display state, without polling."""
+    """Expose observed controls and target state without cloud polling."""
 
     is_local = True
 
@@ -60,6 +60,7 @@ class LocalAlorairCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.command_lock = asyncio.Lock()
         self.pending: dict[str, LocalPendingCommand] = {}
         self.last_command: LocalCommandFeedback | None = None
+        self.last_auto_humidity = 50
         self._session_id: int | None = None
         self._receive_sequence = -1
         self._received_monotonic: float | None = None
@@ -140,10 +141,13 @@ class LocalAlorairCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._receive_sequence = status.receive_sequence
         self._received_monotonic = status.received_monotonic
         received_at = status.received_at.astimezone(UTC).isoformat()
+        if status.target_humidity is not None and status.target_humidity >= 25:
+            self.last_auto_humidity = status.target_humidity
         self.async_set_updated_data(
             {
                 "powerStatus": "01" if status.power is True else "00" if status.power is False else None,
                 "temperatureUnit": {"celsius": 0, "fahrenheit": 1}.get(status.temperature_unit),
+                "currentHumidity": status.target_humidity,
                 "updateTimeStr": received_at,
                 "observed_at_utc": received_at,
             }
@@ -193,6 +197,14 @@ class LocalAlorairCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if method == "async_set_temperature_unit" and len(args) == 1 and args[0] in ("celsius", "fahrenheit"):
             if key == "temperatureUnit" and wanted == ("01" if args[0] == "fahrenheit" else "00"):
                 return 0x24
+        if method == "async_set_humidity" and len(args) == 1 and type(args[0]) is int:
+            if (
+                key == "currentHumidity"
+                and type(wanted) is int
+                and wanted == args[0]
+                and (wanted == 20 or 25 <= wanted <= 80 and wanted % 5 == 0)
+            ):
+                return 0x23
         raise ServiceValidationError("This local command or parameter is not supported")
 
     async def async_command(
@@ -229,7 +241,7 @@ class LocalAlorairCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             power = self.data.get("powerStatus")
             if starting and power not in {"00", "01"}:
                 raise ServiceValidationError("A known local power state is required before starting")
-            if requires_on and power != "01":
+            if (requires_on or opcode == 0x23) and power != "01":
                 raise ServiceValidationError("Turn the dehumidifier on before changing this setting")
             pending = self.pending.get(key)
             if pending and pending.deadline > time.monotonic() and pending.wanted == wanted:
@@ -253,7 +265,11 @@ class LocalAlorairCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             try:
                 async with asyncio.timeout(COMMAND_TIMEOUT_SECONDS):
                     status = await getattr(self.client, method)(*args)
-                actual = status.power if opcode == 0x21 else status.temperature_unit
+                actual = {
+                    0x21: status.power,
+                    0x23: status.target_humidity,
+                    0x24: status.temperature_unit,
+                }[opcode]
                 if status.event_opcode != opcode or actual != args[0] or status.received_monotonic < issued:
                     raise CommandUncertainError("unexpected_report")
             except (CommandUncertainError, TimeoutError) as err:
