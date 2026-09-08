@@ -310,6 +310,8 @@ async def test_config_flow_requires_disclosure_and_validates_identity(hass):
     with patch("custom_components.alorair_lite.config_flow.AlorairClient") as client_type:
         client_type.return_value = AsyncMock()
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        assert result["type"] == "menu"
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "cloud"})
         assert result["type"] == "form"
         values = {
             "username": "test@example.invalid",
@@ -334,6 +336,7 @@ async def test_config_flow_requires_disclosure_and_validates_identity(hass):
 
 async def test_blank_username_returns_form_error_without_network(hass):
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "cloud"})
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
@@ -368,6 +371,7 @@ async def test_config_flow_failure_logs_only_fixed_diagnostics(hass, caplog, pha
     getattr(client, "async_login" if phase == "login" else "async_status").side_effect = error
     with patch("custom_components.alorair_lite.config_flow.AlorairClient", return_value=client):
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"next_step_id": "cloud"})
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {

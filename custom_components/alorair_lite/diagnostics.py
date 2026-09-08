@@ -7,8 +7,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
     coordinator = entry.runtime_data
     data = coordinator.data or {}
     return {
-        "transport": "vendor_http_cloud_polling",
-        "poll_success": coordinator.last_update_success,
+        "transport": "local_tcp_push" if coordinator.is_local else "vendor_http_cloud_polling",
+        "status_available" if coordinator.is_local else "poll_success": coordinator.last_update_success,
         "sample_stale": coordinator.status_stale,
         "pending_power": coordinator.pending_power,
         "state": {

@@ -1,13 +1,13 @@
 # Installation
 
-Install the custom component, then connect an existing AlorAir-Lite account through Home Assistant's UI. Home Assistant 2026.6.2 and one Lite-equipped Storm Pro have been tested; see [Compatibility](COMPATIBILITY.md) before installing for another model or controller generation.
+Install the custom component, then choose **AlorAir-Lite cloud** or **Experimental local connection** through Home Assistant's UI in a build containing both profiles. The cloud profile is the default for existing entries. Home Assistant 2026.6.2 and one Lite-equipped Storm Pro have been tested with cloud control; see [Compatibility](COMPATIBILITY.md) before installing for another model or controller generation. The experimental local profile has separate [setup and validation limits](LOCAL_CONTROL.md); standalone endpoint tests do not mean the HA profile has been commissioned on hardware.
 
 **Current availability:** this repository is private. HACS (Home Assistant Community Store) [cannot install private repositories](https://hacs.xyz/docs/faq/private_repositories/), even when your GitHub account has access. Use [manual installation](#manual-installation) now. The HACS steps below apply once this project is available at a public repository URL; public installation has not yet been tested.
 
 ## Requirements
 
 - Home Assistant **2026.6.2 or newer** and administrator access. This is the minimum declared in `hacs.json` and the version used in the test suite; older versions are unverified. Home Assistant OS/Container manages its own Python runtime.
-- An ALORAIR account that owns the device and already works in **AlorAir-Lite**. Complete initial Wi-Fi setup in the manufacturer's correct app first. This integration does not provision Wi-Fi, change the controller or bind a new device to an account.
+- For **Cloud**, an ALORAIR account that owns the device and already works in **AlorAir-Lite**. Both profiles require an already-provisioned Wi-Fi device; this integration does not provision Wi-Fi, change the controller or bind a new device to an account. **Experimental local** instead requires explicit bind/device IPv4 addresses, a TCP listener port, and device-scoped router redirection. It does not use account credentials. See [Local network requirements](LOCAL_CONTROL.md#network-requirements).
 - The complete Wi-Fi MAC for that unit, obtained from its label or your router. The integration accepts 12 hex digits or six colon/hyphen-separated pairs and matches the complete identity. The cloud may show a 24-character number with twelve leading zeros; enter the ordinary Wi-Fi MAC, not that padded cloud number. An IP address or Bluetooth discovery name is not a substitute.
 - A recent Home Assistant backup. Manual installation also requires read access to the repository or a release package and a trusted way to copy files into Home Assistant's configuration directory. See Home Assistant's [configuration directory guidance](https://www.home-assistant.io/docs/configuration/) and [file-access guidance](https://www.home-assistant.io/common-tasks/os/#configuring-access-to-files).
 
@@ -85,7 +85,7 @@ Restart Home Assistant after copying. Reloading YAML does not load newly added P
 ## Add the account and unit
 
 1. Open **Settings → Devices & services → Add integration** and search for **ALORAIR Lite**.
-2. Enter your AlorAir-Lite account email/password and the complete Wi-Fi MAC from the requirements above.
+2. Choose **AlorAir-Lite cloud**, then enter your AlorAir-Lite account email/password and the complete Wi-Fi MAC from the requirements above.
 3. Read and acknowledge the vendor's unencrypted HTTP requirement. Without that acknowledgement, the integration does not connect. See [Security](SECURITY.md).
 4. Complete setup. The integration checks the owned-device list and binds the entry to the exact device identity; it does not select the first account device or silently change the app's selected unit.
 5. Open the created device page. Record the actual entity IDs Home Assistant assigned. Entity IDs depend on the device name and existing entities, so do not assume an example ID is yours.
@@ -104,6 +104,14 @@ Confirm that power, intake humidity, sample time and fault information match the
 
 The integration creates device entities only. Any Home Assistant dashboard or automation using those entities is configured separately.
 
+### Experimental local setup or reconfiguration
+
+The pinned v0.2.2 release above contains the cloud profile only. The following local setup requires a build containing the experimental local transport; it is development-branch functionality until included in a published release.
+
+Choose **Experimental local connection** to configure an inbound TCP listener using an explicit bind IPv4, device IPv4, port (default 6100) and full Wi-Fi MAC. Router redirection and reachability must be prepared separately; this form does not discover or configure the appliance network. Follow [Experimental local control](LOCAL_CONTROL.md) before changing transport.
+
+For a device already configured with Cloud, use the existing entry's **Reconfigure** action. Duplicate device identities are rejected. Reconfiguration preserves the entry/device identity and the dehumidifier's unique identity, and replaces cloud credentials with local settings. The local profile creates six entities: dehumidifier, Power switch, Temperature display, Fresh device sample, Device sample time and Last command. Target/auto/continuous controls are implemented, but intake humidity remains unknown and fault, purge and locator entities are absent. Review dependent automations and actual entity IDs before migration. ON requires the local power option, disabled by default. A standalone local endpoint has confirmed ON/OFF, targets 50%/55% and continuous-mode restoration. The HA profile still requires appliance commissioning; other numeric targets, cold boot and sustained offline operation remain unverified. There is no automatic cloud fallback. See [Reconfiguration and rollback](LOCAL_CONTROL.md#reconfigure-an-existing-cloud-entry).
+
 ## Updates
 
 Before updating, pause any automations that issue commands to this device and request a normal stop if appropriate. Back up Home Assistant. Keep the previous release until state/control checks pass. Restart Home Assistant after updating integration files; a config-entry reload does not load changed Python code. Re-enable paused automations after verification.
@@ -118,7 +126,7 @@ Download the new release package, or run `git fetch --tags` and `git checkout <p
 
 ## Removal
 
-First pause any automations using its entities and request a normal device stop if that is the desired final state. Delete the ALORAIR Lite entry under **Settings → Devices & services**. For a HACS-managed installation, remove the downloaded integration through HACS; for a manual installation, remove only its `custom_components/alorair_lite` directory. Restart Home Assistant. Removing an integration does not itself send a stop command to the appliance.
+First pause any automations using its entities and request a normal device stop if that is the desired final state. For a local entry, also plan removal of its device-scoped routing rule and restoration of the original network path. Delete the ALORAIR Lite entry under **Settings → Devices & services**. For a HACS-managed installation, remove the downloaded integration through HACS; for a manual installation, remove only its `custom_components/alorair_lite` directory. Restart Home Assistant. Removing an integration does not itself send a stop command or remove router rules.
 
 ## Troubleshooting
 
@@ -134,6 +142,7 @@ First pause any automations using its entities and request a normal device stop 
 | Humidity/mode action rejected while off | Turn on, wait for reported on, then change the setting. |
 | A command remains pending | Wait for device feedback and inspect timestamps. A successful request does not establish that the physical unit acted. |
 | Entities become unavailable | Check vendor connectivity, credentials and fresh device samples. A working phone app may be using cached readings too. |
+| Local entry has no samples or shows unknown intake humidity | Check [local routing and troubleshooting](LOCAL_CONTROL.md#troubleshooting-and-remaining-work). Native intake humidity is not mapped; a reported target is not a humidity measurement. The local profile does not query cloud status as a fallback. |
 | Dependency/import error after an HA upgrade | Check logs and the tested version in [Live validation](LIVE_VALIDATION.md); restore the previous integration/HA backup if needed. |
 
 When reporting a failure, include the integration commit/version, Home Assistant version, affected action and a redacted error. Exclude raw API responses, email, tokens, MAC addresses, IP addresses and configuration-entry exports.
