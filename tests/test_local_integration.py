@@ -11,6 +11,7 @@ from homeassistant import config_entries
 from homeassistant.core import State
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity_component import DATA_INSTANCES
 from test_integration import MAC, entry, status
 from test_integration import hass as hass
 
@@ -110,17 +111,38 @@ async def unit(hass, monkeypatch):
         await appliance.close()
 
 
-async def test_local_entry_waits_for_device_without_cloud_or_fabricated_entities(hass, unit):
+async def test_local_entry_waits_for_device_without_cloud_or_fabricated_readings(hass, unit):
     configured, appliance = unit
     registry = er.async_get(hass)
     entities = er.async_entries_for_config_entry(registry, configured.entry_id)
     assert {item.unique_id for item in entities} == {
-        f"{MAC}_power",
-        f"{MAC}_dehumidifier",
-        f"{MAC}_temperatureUnit",
-        f"{MAC}_fresh",
-        f"{MAC}_sample_time",
-        f"{MAC}_last_command",
+        f"{MAC}_{key}"
+        for key in (
+            "power",
+            "dehumidifier",
+            "temperatureUnit",
+            "fresh",
+            "sample_time",
+            "last_command",
+            "inHumidity",
+            "outHumidity",
+            "inCelsius",
+            "outCelsius",
+            "inGkg",
+            "outGkg",
+            "inGrlb",
+            "outGrlb",
+            "singleWorktime",
+            "coil_temperature",
+            "fault_codes",
+            "drainStatus",
+            "defrostingStatus",
+            "fault",
+            "locate",
+            "purge",
+            "refresh",
+            "humidityUnit",
+        )
     }
     power_id = registry.async_get_entity_id("switch", DOMAIN, f"{MAC}_power")
     assert hass.states.get(power_id).state == "unavailable"
@@ -382,6 +404,25 @@ async def test_unsupported_local_target_and_cloud_action_do_not_write(hass, unit
         await configured.runtime_data.async_command("async_set_humidity", (51,), "currentHumidity", 51)
     with pytest.raises(HomeAssistantError, match="cloud actions"):
         await configured.runtime_data.async_experimental_action("firmware_check", {})
+    registry = er.async_get(hass)
+    with (
+        patch.object(configured.runtime_data, "async_command", new_callable=AsyncMock) as command,
+        patch.object(configured.runtime_data, "async_request_refresh", new_callable=AsyncMock) as refresh,
+    ):
+        for domain, key, method, args in (
+            ("button", "purge", "async_press", ()),
+            ("button", "refresh", "async_press", ()),
+            ("switch", "locate", "async_turn_on", ()),
+            ("switch", "locate", "async_turn_off", ()),
+            ("select", "humidityUnit", "async_select_option", ("grams_per_kilogram",)),
+        ):
+            entity_id = registry.async_get_entity_id(domain, DOMAIN, f"{MAC}_{key}")
+            entity = hass.data[DATA_INSTANCES][domain].get_entity(entity_id)
+            assert hass.states.get(entity_id).state == "unavailable"
+            with pytest.raises(ServiceValidationError, match="local"):
+                await getattr(entity, method)(*args)
+        command.assert_not_awaited()
+        refresh.assert_not_awaited()
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(appliance.reader.read(1), 0.02)
 

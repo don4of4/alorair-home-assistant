@@ -8,9 +8,6 @@ from .models import code, faults
 
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
-    if entry.runtime_data.is_local:
-        async_add_entities([AlorairBinary(entry.runtime_data, "fresh", "Fresh device sample")])
-        return
     async_add_entities(
         [
             AlorairBinary(entry.runtime_data, key, name)

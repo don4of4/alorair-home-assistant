@@ -14,6 +14,12 @@ An unofficial Home Assistant integration for **AlorAir-Lite** dehumidifiers. The
 
 **Install with HACS:** add `https://github.com/don4of4/alorair-home-assistant` as a custom repository of type **Integration**, then download **ALORAIR Lite** and restart Home Assistant. This public, MIT-licensed integration is not in HACS's default catalog. See the [installation and migration guide](docs/INSTALL.md) for complete steps, including manual installation.
 
+## Switching between cloud and local
+
+The 0.3.1 update registers the **same 24 entities** in both profiles, including optional diagnostics disabled by default. Use the existing integration entry's **Reconfigure** action: entity names, IDs and user customizations remain attached to the same device. The Power switch is available in either profile and shares the dehumidifier's command handling.
+
+Features that the local protocol does not yet support stay registered as **unavailable**, with `unavailable_reason: not_supported_by_local_connection`. They resume through the same entities after switching to a working cloud connection. This preserves dashboard and automation references; it does not supply missing readings or enable unsupported controls. Local mode never falls back to the cloud. See [switching connections](docs/INSTALL.md#switching-connections).
+
 ## Cloud capabilities
 
 | Feature | Behavior |
