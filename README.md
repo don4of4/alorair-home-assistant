@@ -4,7 +4,7 @@ An unofficial Home Assistant integration for **AlorAir-Lite** dehumidifiers. The
 
 **The cloud profile was live-tested with one Storm Pro using AlorAir-Lite on Home Assistant 2026.6.2.** Power, humidity, continuous mode, purge, display units and locate were confirmed through fresh device reports. Other models remain unverified. This is telemetry confirmation, not independent physical observation. See [Compatibility](docs/COMPATIBILITY.md) and [Validation](docs/LIVE_VALIDATION.md).
 
-The **unreleased 0.3.0 build** provides experimental local control; v0.2.2 contains only the cloud profile. A persistent Home Assistant installation with device-scoped routing, managed local DNS and an enabled device WAN block confirmed ON/OFF while retaining continuous mode, without retries. Earlier testing found an unconfirmed mode-change request, so command reliability and long-running operation remain open limitations. Intake humidity, faults, purge and locator are unavailable locally; cold boot and other controllers are unverified. [Local setup and evidence](docs/LOCAL_CONTROL.md)
+**Version 0.3.0** provides opt-in experimental local control; the cloud profile remains the default. A persistent Home Assistant installation with device-scoped routing, managed local DNS and an enabled device WAN block confirmed ON/OFF while retaining continuous mode, without retries. Earlier testing found an unconfirmed mode-change request, so command reliability and long-running operation remain open limitations. Intake humidity, faults, purge and locator are unavailable locally; cold boot and other controllers are unverified. [Local setup and evidence](docs/LOCAL_CONTROL.md)
 
 ## Get started
 
@@ -12,7 +12,7 @@ The **unreleased 0.3.0 build** provides experimental local control; v0.2.2 conta
 2. Follow [Installation](docs/INSTALL.md) for **HACS** (Home Assistant Community Store) or a manual install, then add **ALORAIR Lite** through **Settings → Devices & services** and choose **AlorAir-Lite cloud**. Experimental local setup has separate [network requirements](docs/LOCAL_CONTROL.md#network-requirements).
 3. Open the created device page for power, humidity, mode and telemetry. Use the entity IDs assigned by your installation.
 
-**Distribution status:** HACS metadata and instructions are included, but this repository is currently private. [HACS requires a public repository](https://hacs.xyz/docs/faq/private_repositories/), so use the authenticated [manual installation](docs/INSTALL.md#manual-installation) for now. The integration is not in HACS's default catalog. The guide also covers moving an existing manual installation to HACS when public distribution is available.
+**Install with HACS:** add `https://github.com/don4of4/alorair-home-assistant` as a custom repository of type **Integration**, then download **ALORAIR Lite** and restart Home Assistant. This public, MIT-licensed integration is not in HACS's default catalog. See the [installation and migration guide](docs/INSTALL.md) for complete steps, including manual installation.
 
 ## Cloud capabilities
 

@@ -2,7 +2,7 @@
 
 Install the custom component, then choose **AlorAir-Lite cloud** or **Experimental local connection** through Home Assistant's UI in a build containing both profiles. The cloud profile is the default for existing entries. Home Assistant 2026.6.2 and one Lite-equipped Storm Pro have been tested with cloud control; see [Compatibility](COMPATIBILITY.md) before installing for another model or controller generation. The experimental local profile has separate [setup and validation limits](LOCAL_CONTROL.md); standalone endpoint tests do not mean the HA profile has been commissioned on hardware.
 
-**Current availability:** this repository is private. HACS (Home Assistant Community Store) [cannot install private repositories](https://hacs.xyz/docs/faq/private_repositories/), even when your GitHub account has access. Use [manual installation](#manual-installation) now. The HACS steps below apply once this project is available at a public repository URL; public installation has not yet been tested.
+**Current availability:** this public repository can be added to **HACS** (Home Assistant Community Store) as a custom integration repository. Version **0.3.0** includes the default cloud profile and opt-in experimental local control. It is not in HACS's default catalog. HACS download and migration on a running Home Assistant installation have not yet been exercised.
 
 ## Requirements
 
@@ -13,11 +13,11 @@ Install the custom component, then choose **AlorAir-Lite cloud** or **Experiment
 
 ## HACS installation
 
-This will be the preferred installation and update method once public distribution is available. The project uses a **HACS custom repository**; it is not included in HACS's default catalog.
+This is the preferred installation and update method. The project uses a **HACS custom repository**; it is not included in HACS's default catalog.
 
 1. Install and configure HACS using its official [download](https://hacs.xyz/docs/use/download/download/) and [initial configuration](https://hacs.xyz/docs/use/configuration/basic/) instructions, if it is not already present.
 2. Open **HACS** in Home Assistant. Select the top-right **⋮ → Custom repositories**.
-3. Enter the project's public GitHub repository URL, select type **Integration**, and choose **Add**. The current project URL is `https://github.com/don4of4/alorair-home-assistant`; it must be publicly accessible for this step to work. Follow any updated publication URL announced in this project's README.
+3. Enter `https://github.com/don4of4/alorair-home-assistant`, select type **Integration**, and choose **Add**.
 4. Find **ALORAIR Lite** in HACS, open it, and choose **Download**. Select the latest stable release, review the displayed version, and complete the download.
 5. Restart Home Assistant, then follow [Add the account and unit](#add-the-account-and-unit).
 
@@ -25,7 +25,7 @@ HACS downloads the component files; account setup still happens separately in **
 
 ### Move an existing manual install to HACS
 
-Once a public repository is available, back up Home Assistant and follow the HACS download steps above. Download the integration through HACS even if its files already exist: HACS [does not automatically adopt manually installed files](https://hacs.xyz/docs/faq/existing_elements/).
+Back up Home Assistant and follow the HACS download steps above. Download the integration through HACS even if its files already exist: HACS [does not automatically adopt manually installed files](https://hacs.xyz/docs/faq/existing_elements/).
 
 Keep the existing **ALORAIR Lite** entry in **Settings → Devices & services**. Do not delete it or configure a second copy. Both methods install the same `alorair_lite` integration directory; downloading through HACS and restarting should retain the existing account entry, device/entity identities and automations. Verify the existing entities after the restart. This migration procedure has not yet been exercised against a public HACS installation.
 
@@ -33,20 +33,17 @@ Keep the existing **ALORAIR Lite** entry in **Settings → Devices & services**.
 
 ### Download a release
 
-Download `alorair-lite-<version>.zip` and `SHA256SUMS.txt` from the same version in [Releases](https://github.com/don4of4/alorair-home-assistant/releases). While the repository is private, sign into GitHub with an account that can read it. With both downloads in the same directory, verify them using `shasum -a 256 -c SHA256SUMS.txt` on macOS or `sha256sum -c SHA256SUMS.txt` on Linux. Extract the ZIP to a temporary directory; it contains `custom_components/alorair_lite/`. Copy the complete integration folder as described below.
+Download `alorair-lite-<version>.zip` and `SHA256SUMS.txt` from the same version in [Releases](https://github.com/don4of4/alorair-home-assistant/releases). With both downloads in the same directory, verify them using `shasum -a 256 -c SHA256SUMS.txt` on macOS or `sha256sum -c SHA256SUMS.txt` on Linux. Extract the ZIP to a temporary directory; it contains `custom_components/alorair_lite/`. Copy the complete integration folder as described below.
 
-Alternatively, clone a release with GitHub CLI:
-
-On a trusted computer with Git and GitHub CLI, authenticate interactively with an account that can read the repository:
+Alternatively, clone the published release with Git; no repository credentials are required:
 
 ```sh
-gh auth login
-gh repo clone don4of4/alorair-home-assistant
+git clone https://github.com/don4of4/alorair-home-assistant.git
 cd alorair-home-assistant
-git checkout v0.2.2
+git checkout v0.3.0
 ```
 
-If GitHub CLI is already authenticated, use `gh auth status` and skip `gh auth login`. The checkout pins a stable release instead of installing unreleased changes from `main`; choose a newer published release tag when appropriate. GitHub documents authenticated cloning in its [CLI reference](https://cli.github.com/manual/gh_repo_clone).
+The checkout pins a published release instead of installing changes from `main`; choose a newer published release tag when appropriate.
 
 ### Copy the integration
 
@@ -106,11 +103,11 @@ The integration creates device entities only. Any Home Assistant dashboard or au
 
 ### Experimental local setup or reconfiguration
 
-The pinned v0.2.2 release above contains the cloud profile only. The following local setup requires a build containing the experimental local transport; it is development-branch functionality until included in a published release.
+Version 0.3.0 includes this opt-in experimental profile. Earlier releases, including v0.2.2, contain the cloud profile only.
 
 Choose **Experimental local connection** to configure an inbound TCP listener using an explicit bind IPv4, device IPv4, port (default 6100) and full Wi-Fi MAC. Router redirection and reachability must be prepared separately; this form does not discover or configure the appliance network. Follow [Experimental local control](LOCAL_CONTROL.md) before changing transport.
 
-For a device already configured with Cloud, use the existing entry's **Reconfigure** action. Duplicate device identities are rejected. Reconfiguration preserves the entry/device identity and the dehumidifier's unique identity, and replaces cloud credentials with local settings. The local profile creates six entities: dehumidifier, Power switch, Temperature display, Fresh device sample, Device sample time and Last command. Target/auto/continuous controls are implemented, but intake humidity remains unknown and fault, purge and locator entities are absent. Review dependent automations and actual entity IDs before migration. ON requires the local power option, disabled by default. A standalone local endpoint has confirmed ON/OFF, targets 50%/55% and continuous-mode restoration. The HA profile still requires appliance commissioning; other numeric targets, cold boot and sustained offline operation remain unverified. There is no automatic cloud fallback. See [Reconfiguration and rollback](LOCAL_CONTROL.md#reconfigure-an-existing-cloud-entry).
+For a device already configured with Cloud, use the existing entry's **Reconfigure** action. Duplicate device identities are rejected. Reconfiguration preserves the entry/device identity and the dehumidifier's unique identity, and replaces cloud credentials with local settings. The local profile creates six entities: dehumidifier, Power switch, Temperature display, Fresh device sample, Device sample time and Last command. Target/auto/continuous controls are implemented, but intake humidity remains unknown and fault, purge and locator entities are absent. Review dependent automations and actual entity IDs before migration. ON requires the local power option, disabled by default. A standalone local endpoint has confirmed ON/OFF, targets 50%/55% and continuous-mode restoration. A persistent Home Assistant installation also confirmed ON/OFF while retaining continuous mode. Each installation still requires appliance commissioning; an earlier mode-change failure, other numeric targets, cold boot and sustained offline operation remain unresolved or unverified. There is no automatic cloud fallback. See [Reconfiguration and rollback](LOCAL_CONTROL.md#reconfigure-an-existing-cloud-entry).
 
 ## Updates
 
@@ -132,7 +129,7 @@ First pause any automations using its entities and request a normal device stop 
 
 | Symptom | Check |
 | --- | --- |
-| HACS cannot add the repository | It must be public; access to a private repo through your GitHub account does not make it usable in HACS. Use manual installation while distribution remains private. |
+| HACS cannot add the repository | Use the exact GitHub URL above and type **Integration**; check GitHub connectivity and HACS logs. Private forks cannot be installed through HACS. |
 | HACS rejects the Home Assistant version | Upgrade to the declared minimum, 2026.6.2. Older Home Assistant versions are unverified. |
 | Files already exist but HACS shows no installed version | Download through HACS and restart; it does not adopt a manual install automatically. Keep the existing integration entry. |
 | Integration is absent from Add integration | Check the exact directory layout, `manifest.json`, file permissions and a completed restart; then inspect logs. |
@@ -172,6 +169,6 @@ The index-specific local `uv.lock` is excluded from Git. Development uses `aioou
 
 `hacs.json` declares the display name and minimum Home Assistant version. HACS uses the source tree at the selected release tag, with all runtime files in `custom_components/alorair_lite/`. Leave `zip_release` unset: the attached release ZIP has a wrapper directory for manual installation, whereas HACS's ZIP-release mode expects a different archive layout.
 
-Local/CI distribution checks verify metadata consistency, the component layout and the bundled icon. The separate **HACS public repository validation** job uses the official HACS validator and runs only on public repositories; a skipped job while private is not a HACS validation pass. Actual HACS download, update and migration remain unverified until public distribution is available. See the [HACS publishing requirements](https://hacs.xyz/docs/publish/start/) and [integration requirements](https://hacs.xyz/docs/publish/integration/).
+Local/CI distribution checks verify metadata consistency, the component layout and the bundled icon. The separate **HACS public repository validation** job uses the official HACS validator and runs only on public repositories; a skipped job while private is not a HACS validation pass. Actual HACS download, update and migration on a running Home Assistant installation remain unverified. See the [HACS publishing requirements](https://hacs.xyz/docs/publish/start/) and [integration requirements](https://hacs.xyz/docs/publish/integration/).
 
 When publishing a new version, keep `manifest.json`, the project version and the release tag consistent, run the checks, and create a GitHub release. A tag alone does not publish a new version to HACS when the project uses releases. Include `hacs.json` and the brand assets in the tagged source tree.
