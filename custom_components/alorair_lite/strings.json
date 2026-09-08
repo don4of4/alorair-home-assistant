@@ -30,7 +30,7 @@
       },
       "reconfigure": {
         "title": "Change the connection",
-        "description": "The same device identity is retained. Switching to the experimental local profile changes the available entities; existing humidity automations cannot use its power switch without adjustment. Configure routing separately before switching.",
+        "description": "Your device and dehumidifier entity identities are retained. Local mode supports power, humidity targets, Auto/Continuous mode and temperature display units. Measured humidity, faults, purge and locator require cloud mode. Command reliability is still being tested; use local mode only for supervised testing. Prepare routing and DNS separately before switching.",
         "menu_options": {
           "reconfigure_cloud": "AlorAir-Lite cloud",
           "reconfigure_local": "Experimental local connection"
@@ -38,7 +38,7 @@
       },
       "local": {
         "title": "Experimental local connection",
-        "description": "Listen for the already-provisioned appliance on your local network. You must separately route its outbound device connection to this listener; setup does not change router or Wi-Fi settings. This profile provides temperature display and experimental power control. Humidity targets, fault readings, purge and locator are not supported locally yet. It does not contact the vendor cloud. Start commands are disabled until enabled in Configure.",
+        "description": "Local mode supports power, Auto/Continuous mode, humidity targets (25–80% in 5% steps) and temperature display units. Route the already-provisioned appliance’s connection to this listener and prepare DNS separately; setup does not configure your router or Wi-Fi. Measured humidity, faults, purge and locator require cloud mode. Command reliability is still being tested; use local mode only for supervised testing. Local mode does not contact the vendor cloud. Enable experimental power-on separately in Configure.",
         "data": {
           "mac": "Device Wi-Fi MAC (12 hexadecimal digits)",
           "listen_host": "Home Assistant listening IPv4 address",
@@ -57,7 +57,7 @@
       },
       "reconfigure_local": {
         "title": "Use the experimental local connection",
-        "description": "Listen for the already-provisioned appliance on your local network. You must separately route its outbound device connection to this listener; setup does not change router or Wi-Fi settings. This profile provides temperature display and experimental power control. Humidity targets, fault readings, purge and locator are not supported locally yet. It does not contact the vendor cloud. Start commands are disabled until enabled in Configure. This replaces the stored cloud credentials and retains the device identity. Restore the cloud route separately if you switch back.",
+        "description": "Local mode supports power, Auto/Continuous mode, humidity targets (25–80% in 5% steps) and temperature display units. Route the already-provisioned appliance’s connection to this listener and prepare DNS separately; setup does not configure your router or Wi-Fi. Measured humidity, faults, purge and locator require cloud mode. Command reliability is still being tested; use local mode only for supervised testing. Local mode does not contact the vendor cloud. Enable experimental power-on separately in Configure. This removes stored cloud credentials and retains the device and dehumidifier identities. Restore cloud routing separately before switching back.",
         "data": {
           "listen_host": "Home Assistant listening IPv4 address",
           "device_host": "Appliance IPv4 address",
@@ -94,7 +94,7 @@
       },
       "local": {
         "title": "Experimental local power",
-        "description": "Power-on uses the appliance’s existing humidity setting. Humidity mode and fault telemetry are not yet mapped locally, and local power commands still need appliance validation. Enable starts only during supervised commissioning with the unit set appropriately. Normal power-off remains available on a verified connection.",
+        "description": "Experimental local starts use the selected humidity target or continuous mode. Enable only after preparing local routing and DNS. Measured humidity and fault telemetry are unavailable locally. Normal power-off remains available on a verified connection. Command reliability is still being tested; use local mode only for supervised testing.",
         "data": {
           "allow_local_power": "Allow experimental local power-on"
         }

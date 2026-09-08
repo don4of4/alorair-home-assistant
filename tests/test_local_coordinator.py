@@ -372,8 +372,67 @@ async def test_no_optimism_uncertain_result_not_replayed_or_confirmed_by_unquali
     unit.client.publish(sample(sequence=2, power=True, opcode=0x21))
     assert unit.last_command.status == "delivery_uncertain"
     assert unit.pending_power == "on"
-    await power(unit, True)
+    with pytest.raises(ServiceValidationError, match="previous request's delivery is uncertain; no retry was sent"):
+        await power(unit, True)
     unit.client.async_set_power.assert_awaited_once()
+
+
+async def test_uncertain_humidity_duplicate_reports_suppression_without_resending_or_extending_window(unit):
+    unit.client.publish(sample(power=True, target=55))
+    unit.client.async_set_humidity.side_effect = CommandUncertainError("test")
+    with pytest.raises(HomeAssistantError, match="delivery is uncertain"):
+        await unit.async_command("async_set_humidity", (20,), "currentHumidity", 20)
+    pending = unit.pending["currentHumidity"]
+    feedback = unit.last_command
+    assert pending.deadline - pending.issued_monotonic == local.PENDING_SECONDS == 300
+
+    with pytest.raises(
+        ServiceValidationError, match="previous request's delivery is uncertain; no retry was sent"
+    ) as err:
+        await unit.async_command("async_set_humidity", (20,), "currentHumidity", 20)
+
+    assert "Wait for the pending request to expire and check fresh device status" in str(err.value)
+    unit.client.async_set_humidity.assert_awaited_once_with(20)
+    assert unit.pending["currentHumidity"] is pending
+    assert unit.last_command is feedback and feedback.status == "delivery_uncertain"
+    assert unit.data["currentHumidity"] == 55
+
+
+@pytest.mark.parametrize("uncertain", [False, True])
+async def test_concurrent_duplicate_waits_for_original_outcome_and_never_sends_twice(unit, uncertain):
+    unit.client.publish(sample(power=True, target=55))
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def controlled(target):
+        entered.set()
+        await release.wait()
+        if uncertain:
+            raise CommandUncertainError("test")
+        return await unit.client.humidity(target)
+
+    unit.client.async_set_humidity.side_effect = controlled
+    original = asyncio.create_task(unit.async_command("async_set_humidity", (20,), "currentHumidity", 20))
+    await entered.wait()
+    pending = unit.pending["currentHumidity"]
+    duplicate = asyncio.create_task(unit.async_command("async_set_humidity", (20,), "currentHumidity", 20))
+    await asyncio.sleep(0)
+    assert not duplicate.done()
+    release.set()
+
+    if uncertain:
+        with pytest.raises(HomeAssistantError, match="delivery is uncertain"):
+            await original
+        with pytest.raises(ServiceValidationError, match="previous request's delivery is uncertain; no retry was sent"):
+            await duplicate
+        assert unit.pending["currentHumidity"] is pending
+        assert unit.last_command.status == "delivery_uncertain"
+        assert unit.data["currentHumidity"] == 55
+    else:
+        await asyncio.gather(original, duplicate)
+        assert not unit.pending
+        assert unit.last_command.status == "device_reported"
+        assert unit.data["currentHumidity"] == 20
+    unit.client.async_set_humidity.assert_awaited_once_with(20)
 
 
 @pytest.mark.parametrize("unit", [True], indirect=True)

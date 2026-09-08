@@ -245,7 +245,10 @@ class LocalAlorairCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 raise ServiceValidationError("Turn the dehumidifier on before changing this setting")
             pending = self.pending.get(key)
             if pending and pending.deadline > time.monotonic() and pending.wanted == wanted:
-                return
+                raise ServiceValidationError(
+                    "The previous request's delivery is uncertain; no retry was sent. "
+                    "Wait for the pending request to expire and check fresh device status."
+                )
             actual = self.data.get(key)
             if key == "temperatureUnit":
                 actual = {0: "00", 1: "01"}.get(actual)
