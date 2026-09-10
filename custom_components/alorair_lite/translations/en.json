@@ -38,7 +38,7 @@
       },
       "local": {
         "title": "Experimental local connection",
-        "description": "Local mode supports power, Auto/Continuous mode, humidity targets (25–80% in 5% steps) and temperature display units. Route the already-provisioned appliance’s connection to this listener and prepare DNS separately; setup does not configure your router or Wi-Fi. Measured humidity, faults, purge and locator require cloud mode. Command reliability is still being tested; use local mode only for supervised testing. Local mode does not contact the vendor cloud. Enable experimental power-on separately in Configure.",
+        "description": "Local mode supports power, Auto/Continuous mode, humidity targets (25–80% in 5% steps) and temperature display units. Route the already-provisioned appliance’s connection to this listener and prepare DNS separately; setup does not configure your router or Wi-Fi. Both connections keep the same entity names and IDs. Measured humidity, faults, purge and locator remain unavailable in local mode; they require cloud mode. Command reliability is still being tested; use local mode only for supervised testing. Local mode does not contact the vendor cloud. Enable experimental power-on separately in Configure.",
         "data": {
           "mac": "Device Wi-Fi MAC (12 hexadecimal digits)",
           "listen_host": "Home Assistant listening IPv4 address",
@@ -57,7 +57,7 @@
       },
       "reconfigure_local": {
         "title": "Use the experimental local connection",
-        "description": "Local mode supports power, Auto/Continuous mode, humidity targets (25–80% in 5% steps) and temperature display units. Route the already-provisioned appliance’s connection to this listener and prepare DNS separately; setup does not configure your router or Wi-Fi. Measured humidity, faults, purge and locator require cloud mode. Command reliability is still being tested; use local mode only for supervised testing. Local mode does not contact the vendor cloud. Enable experimental power-on separately in Configure. This removes stored cloud credentials and retains the device and dehumidifier identities. Restore cloud routing separately before switching back.",
+        "description": "Local mode supports power, Auto/Continuous mode, humidity targets (25–80% in 5% steps) and temperature display units. Route the already-provisioned appliance’s connection to this listener and prepare DNS separately; setup does not configure your router or Wi-Fi. Both connections keep the same entity names and IDs. Measured humidity, faults, purge and locator remain unavailable in local mode; they require cloud mode. Command reliability is still being tested; use local mode only for supervised testing. Local mode does not contact the vendor cloud. Enable experimental power-on separately in Configure. This removes stored cloud credentials and retains the device and all entity identities. Restore cloud routing separately before switching back.",
         "data": {
           "listen_host": "Home Assistant listening IPv4 address",
           "device_host": "Appliance IPv4 address",

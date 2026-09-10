@@ -384,7 +384,8 @@ async def test_uncertain_humidity_duplicate_reports_suppression_without_resendin
         await unit.async_command("async_set_humidity", (20,), "currentHumidity", 20)
     pending = unit.pending["currentHumidity"]
     feedback = unit.last_command
-    assert pending.deadline - pending.issued_monotonic == local.PENDING_SECONDS == 300
+    assert local.PENDING_SECONDS == 300
+    assert pending.deadline - pending.issued_monotonic == pytest.approx(local.PENDING_SECONDS)
 
     with pytest.raises(
         ServiceValidationError, match="previous request's delivery is uncertain; no retry was sent"

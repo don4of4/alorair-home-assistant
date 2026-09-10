@@ -24,9 +24,6 @@ MEASUREMENTS = (
 
 async def async_setup_entry(hass, entry, async_add_entities) -> None:
     coordinator = entry.runtime_data
-    if coordinator.is_local:
-        async_add_entities([AlorairSampleTime(coordinator), AlorairCommandFeedback(coordinator)])
-        return
     async_add_entities(
         [
             *(AlorairMeasurement(coordinator, *item) for item in MEASUREMENTS),

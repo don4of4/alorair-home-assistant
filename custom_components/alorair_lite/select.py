@@ -16,18 +16,15 @@ async def async_setup_entry(hass, entry, async_add_entities) -> None:
             "Temperature display",
             ["celsius", "fahrenheit"],
             "async_set_temperature_unit",
-        )
+        ),
+        AlorairUnit(
+            entry.runtime_data,
+            "humidityUnit",
+            "Specific humidity display",
+            ["grains_per_pound", "grams_per_kilogram"],
+            "async_set_moisture_unit",
+        ),
     ]
-    if not entry.runtime_data.is_local:
-        entities.append(
-            AlorairUnit(
-                entry.runtime_data,
-                "humidityUnit",
-                "Specific humidity display",
-                ["grains_per_pound", "grams_per_kilogram"],
-                "async_set_moisture_unit",
-            )
-        )
     async_add_entities(entities)
 
 
@@ -47,6 +44,7 @@ class AlorairUnit(AlorairEntity, SelectEntity):
         return self._attr_options[int(value)] if value in {0, 1} else None
 
     async def async_select_option(self, option: str) -> None:
+        self.require_supported_connection()
         if option not in self._attr_options:
             raise ServiceValidationError("Unsupported display unit")
         await self.coordinator.async_command(
