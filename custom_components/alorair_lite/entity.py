@@ -14,6 +14,7 @@ LOCAL_SUPPORTED_ENTITIES = frozenset(
     {
         "dehumidifier",
         "power",
+        "drainStatus",
         "temperatureUnit",
         "fresh",
         "sample_time",

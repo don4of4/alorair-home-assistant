@@ -172,6 +172,7 @@ Offsets below are into the 34-byte data field of a `07` status frame and are zer
 | Data offset | Length | Meaning |
 | --- | --- | --- |
 | 3 | 1 | Power: `00` off, `01` on. Other values are unknown. |
+| 4 | 1 | Draining: `00` inactive, `01` active. Other values are unknown. |
 | 8 | 1 | Inlet temperature, °C |
 | 9 | 1 | Inlet temperature, °F |
 | 10 | 1 | Inlet relative humidity, percent |
@@ -189,14 +190,16 @@ The measurement block at offsets 8–21 was reverse-engineered from packet captu
 
 The decoder treats the temperature bytes as signed and reports a temperature only when its paired Fahrenheit byte confirms the conversion. Humidity is reported only within 0–100%. Any other value is left unknown rather than guessed. Sub-zero temperatures follow from the signed interpretation and were not observed.
 
+Offset 4 changed from `00` to `01` and back during a physically observed purge while the other operating flags stayed on. It supplies the existing Draining entity. The physical button test did not establish the native purge command or its acknowledgement; remote purge remains unavailable locally.
+
 The remaining data bytes are **candidates, not established fields**, and none is mapped to an entity:
 
 - Offset 0 is a constant `0x20`, a candidate for the cloud fault mask's always-ignored `0x20` bit.
 - Offset 22 falls during operation and recovers afterwards, a coil-temperature candidate with no cloud cross-reference.
 - Offsets 24–25 and 28–29 slowly increment, so both are counter candidates.
-- Offsets 4, 6 and 7 are 0/1 flags that change around power transitions.
+- Offsets 6 and 7 are 0/1 flags that change around power transitions.
 
-Purge, drain, locate, defrost and fault events never occurred in the captures, so those states remain unmapped. The absence of a local fault entity is not evidence that the unit is fault-free.
+Locate, defrost and fault events were not observed, so those states remain unmapped. The absence of a local fault entity is not evidence that the unit is fault-free.
 
 ### Freshness, command matching and cancellation
 

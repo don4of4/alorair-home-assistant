@@ -114,6 +114,7 @@ class DeviceStatus:
     outlet_gkg: int | None = None
     inlet_grlb: int | None = None
     outlet_grlb: int | None = None
+    draining: bool | None = None
 
 
 @dataclass
@@ -314,6 +315,7 @@ class LocalClient:
                             decoded["outlet_gkg"],
                             decoded["inlet_grlb"],
                             decoded["outlet_grlb"],
+                            decoded["draining"],
                         )
                         self._last_status = status
                         pending = session.pending

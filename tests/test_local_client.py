@@ -145,10 +145,13 @@ class LocalClientTests(unittest.IsolatedAsyncioTestCase):
     async def test_captured_report_populates_telemetry_and_legacy_status_leaves_it_unknown(self):
         client = await self.create_client()
         device = await self.connect(client, False)
-        await device.send(Frame(MAC, 0, 7, 0x1C, bytes.fromhex(MEASURED_PAYLOAD)).encode())
+        payload = bytearray.fromhex(MEASURED_PAYLOAD)
+        payload[4] = 1
+        await device.send(Frame(MAC, 0, 7, 0x1C, bytes(payload)).encode())
         await eventually(lambda: client.last_status is not None)
         status = client.last_status
         self.assertTrue(status.power)
+        self.assertTrue(status.draining)
         self.assertEqual(status.target_humidity, 55)
         self.assertEqual(
             (status.inlet_celsius, status.inlet_humidity, status.outlet_celsius, status.outlet_humidity),
@@ -169,6 +172,7 @@ class LocalClientTests(unittest.IsolatedAsyncioTestCase):
             status.target_humidity,
         )
         self.assertEqual(legacy.target_humidity, 55)
+        self.assertIsNone(legacy.draining)
         self.assertEqual(
             [
                 legacy.inlet_celsius,

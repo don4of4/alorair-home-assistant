@@ -40,6 +40,7 @@ ENTITY_KEYS = {
 LOCAL_KEYS = {
     "dehumidifier",
     "power",
+    "drainStatus",
     "temperatureUnit",
     "fresh",
     "sample_time",

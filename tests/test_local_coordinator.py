@@ -173,12 +173,14 @@ async def test_initial_listener_has_no_cloud_poll_or_invented_state(unit):
     assert unit.last_update_success
     assert set(unit.data) == {
         "powerStatus",
+        "drainStatus",
         "temperatureUnit",
         "currentHumidity",
         "updateTimeStr",
         "observed_at_utc",
         *VENDOR_KEYS,
     }
+    assert unit.data["drainStatus"] is None
     assert [unit.data[key] for key in VENDOR_KEYS] == [None] * 8
     assert unit.data["powerStatus"] == "00" and unit.data["temperatureUnit"] == 1
     assert not hasattr(unit.client, "async_status")

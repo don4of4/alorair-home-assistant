@@ -63,6 +63,7 @@ class Appliance:
         self.writer = writer
         self.parser = FrameStream(bytes.fromhex(MAC))
         self.power = False
+        self.draining = 0
         self.fahrenheit = True
         self.target = 20
         # Realistic measured values as (celsius, fahrenheit, humidity); tests override these.
@@ -74,6 +75,7 @@ class Appliance:
     async def report(self, opcode=0x1C):
         data = bytearray(34)
         data[3] = int(self.power)
+        data[4] = self.draining
         data[32] = int(self.fahrenheit)
         data[23] = self.target
         data[8:11] = bytes(self.inlet)
@@ -499,6 +501,29 @@ async def test_local_measurements_are_reported_by_the_device_and_clear_when_stal
         assert hass.states.get(entity_id).state == "unavailable", key
         assert "unavailable_reason" not in hass.states.get(entity_id).attributes, key
     assert hass.states.get(humidifier_id).attributes.get("current_humidity") is None
+
+
+async def test_local_draining_tracks_reports_and_recovers_from_unknown_and_stale_status(hass, unit):
+    configured, appliance = unit
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id("binary_sensor", DOMAIN, f"{MAC}_drainStatus")
+    assert hass.states.get(entity_id).state == "unavailable"
+    appliance.power = True
+    for flag, expected in ((0, "off"), (1, "on"), (0, "off"), (255, "unknown"), (1, "on")):
+        appliance.draining = flag
+        await appliance.report()
+        await eventually(lambda expected=expected: hass.states.get(entity_id).state == expected)
+        assert "unavailable_reason" not in hass.states.get(entity_id).attributes
+        assert configured.runtime_data.data["powerStatus"] == "01"
+
+    configured.runtime_data._received_monotonic -= 36
+    configured.runtime_data.async_update_listeners()
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).state == "unavailable"
+    appliance.draining = 0
+    await appliance.report()
+    await eventually(lambda: hass.states.get(entity_id).state == "off")
+    assert registry.async_get_entity_id("binary_sensor", DOMAIN, f"{MAC}_drainStatus") == entity_id
 
 
 async def test_local_restores_auto_target_before_initial_device_connection_without_commands(hass):

@@ -132,11 +132,11 @@ def observed_status(frame: Frame) -> dict[str, bool | int | str | None]:
     if frame.data[32] not in (0, 1):
         raise ValueError("Unknown temperature display value")
     data = frame.data
-    # Inlet/outlet block established from 398 captured frames: F byte = floor(C*9/5+32),
-    # gr/lb = 7*g/kg, g/kg matches the psychrometric mixing ratio of (C, RH).
+    # Inlet/outlet measurements are cross-checked against paired units and cloud readings.
     return {
         "temperature_display": "fahrenheit" if data[32] else "celsius",
         "power": bool(data[3]) if data[3] in (0, 1) else None,
+        "draining": bool(data[4]) if data[4] in (0, 1) else None,
         "target_humidity": humidity_target(data[23]),
         "event_opcode": frame.opcode,
         "inlet_celsius": _temperature(data, 8),

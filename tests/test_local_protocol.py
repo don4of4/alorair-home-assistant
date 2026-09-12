@@ -141,6 +141,7 @@ class ProtocolTests(unittest.TestCase):
                     set(result),
                     {
                         "power",
+                        "draining",
                         "event_opcode",
                         "temperature_display",
                         "target_humidity",
@@ -159,7 +160,18 @@ class ProtocolTests(unittest.TestCase):
         for opcode, payload, expected in CAPTURED_STATUS:
             with self.subTest(payload=payload):
                 result = observed_status(Frame(MAC, 0, 7, opcode, bytes.fromhex(payload)))
-                self.assertEqual(result, {**expected, "event_opcode": opcode})
+                self.assertEqual(result, {**expected, "event_opcode": opcode, "draining": False})
+
+    def test_draining_follows_the_observed_purge_sequence_independently_of_power(self):
+        # Sanitized physical-purge sequence: operating flags remain on while data[4] pulses.
+        data = bytearray(34)
+        data[3] = data[6] = data[7] = data[32] = 1
+        for flag, expected in ((0, False), (1, True), (0, False), (2, None), (255, None)):
+            with self.subTest(flag=flag):
+                data[4] = flag
+                result = observed_status(Frame(MAC, 0, 7, 0x1C, bytes(data)))
+                self.assertIs(result["draining"], expected)
+                self.assertIs(result["power"], True)
 
     def test_unpaired_fahrenheit_byte_blanks_only_its_own_celsius_value(self):
         for offset, blanked, kept, humidity, measured in (
