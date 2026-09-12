@@ -23,8 +23,34 @@ from custom_components.alorair_lite.local_client import (
     DeviceStatus,
 )
 
+# DeviceStatus telemetry fields, in declaration order, and the vendor keys they publish as.
+TELEMETRY = (
+    "inlet_celsius",
+    "inlet_humidity",
+    "outlet_celsius",
+    "outlet_humidity",
+    "inlet_gkg",
+    "outlet_gkg",
+    "inlet_grlb",
+    "outlet_grlb",
+)
+VENDOR_KEYS = ("inCelsius", "inHumidity", "outCelsius", "outHumidity", "inGkg", "outGkg", "inGrlb", "outGrlb")
 
-def sample(*, session=1, sequence=1, power=False, unit="fahrenheit", opcode=0x1C, age=0, received_at=None, target=None):
+
+def sample(
+    *,
+    session=1,
+    sequence=1,
+    power=False,
+    unit="fahrenheit",
+    opcode=0x1C,
+    age=0,
+    received_at=None,
+    target=None,
+    **telemetry,
+):
+    """Build a report; telemetry keyword arguments default to unknown, never to a stale value."""
+    assert not set(telemetry) - set(TELEMETRY)
     return DeviceStatus(
         session,
         sequence,
@@ -34,6 +60,7 @@ def sample(*, session=1, sequence=1, power=False, unit="fahrenheit", opcode=0x1C
         unit,
         opcode,
         target,
+        *(telemetry.get(field) for field in TELEMETRY),
     )
 
 
@@ -144,9 +171,38 @@ async def test_initial_listener_has_no_cloud_poll_or_invented_state(unit):
     unit.client.publish(sample())
     await unit.async_request_refresh()
     assert unit.last_update_success
-    assert set(unit.data) == {"powerStatus", "temperatureUnit", "currentHumidity", "updateTimeStr", "observed_at_utc"}
+    assert set(unit.data) == {
+        "powerStatus",
+        "drainStatus",
+        "temperatureUnit",
+        "currentHumidity",
+        "updateTimeStr",
+        "observed_at_utc",
+        *VENDOR_KEYS,
+    }
+    assert unit.data["drainStatus"] is None
+    assert [unit.data[key] for key in VENDOR_KEYS] == [None] * 8
     assert unit.data["powerStatus"] == "00" and unit.data["temperatureUnit"] == 1
     assert not hasattr(unit.client, "async_status")
+
+
+async def test_measured_telemetry_uses_vendor_keys_and_never_carries_over(unit):
+    unit.client.publish(
+        sample(
+            inlet_celsius=20,
+            inlet_humidity=62,
+            outlet_celsius=18,
+            outlet_humidity=79,
+            inlet_gkg=9,
+            outlet_gkg=10,
+            inlet_grlb=63,
+            outlet_grlb=70,
+        )
+    )
+    assert [unit.data[key] for key in VENDOR_KEYS] == [20, 62, 18, 79, 9, 10, 63, 70]
+    unit.client.publish(sample(sequence=2))
+    assert [unit.data[key] for key in VENDOR_KEYS] == [None] * 8
+    assert unit.data["powerStatus"] == "00"
 
 
 async def test_unknown_power_remains_unknown_and_receipt_age_uses_monotonic_time(unit):

@@ -19,6 +19,8 @@ from custom_components.alorair_lite.local_client import (
 from custom_components.alorair_lite.local_protocol import Frame, FrameStream
 
 MAC = bytes.fromhex("020000000001")
+# A captured 34-byte status payload; measurement bytes only, no device identity.
+MEASURED_PAYLOAD = "20000001000001011444371c52200038000800380008033703950000036a00000100"
 
 
 def status_frame(power=0, fahrenheit=1, opcode=0x01, target=50):
@@ -139,6 +141,51 @@ class LocalClientTests(unittest.IsolatedAsyncioTestCase):
         await device.send(Frame(MAC, 0, 9, 1, b"").encode())
         second = await device.next_frame()
         self.assertGreater(second.timestamp, first.timestamp)
+
+    async def test_captured_report_populates_telemetry_and_legacy_status_leaves_it_unknown(self):
+        client = await self.create_client()
+        device = await self.connect(client, False)
+        payload = bytearray.fromhex(MEASURED_PAYLOAD)
+        payload[4] = 1
+        await device.send(Frame(MAC, 0, 7, 0x1C, bytes(payload)).encode())
+        await eventually(lambda: client.last_status is not None)
+        status = client.last_status
+        self.assertTrue(status.power)
+        self.assertTrue(status.draining)
+        self.assertEqual(status.target_humidity, 55)
+        self.assertEqual(
+            (status.inlet_celsius, status.inlet_humidity, status.outlet_celsius, status.outlet_humidity),
+            (20, 55, 28, 32),
+        )
+        self.assertEqual(
+            (status.inlet_gkg, status.outlet_gkg, status.inlet_grlb, status.outlet_grlb),
+            (8, 8, 56, 56),
+        )
+        legacy = local_client.DeviceStatus(
+            status.session_id,
+            status.receive_sequence,
+            status.received_at,
+            status.received_monotonic,
+            status.power,
+            status.temperature_unit,
+            status.event_opcode,
+            status.target_humidity,
+        )
+        self.assertEqual(legacy.target_humidity, 55)
+        self.assertIsNone(legacy.draining)
+        self.assertEqual(
+            [
+                legacy.inlet_celsius,
+                legacy.inlet_humidity,
+                legacy.outlet_celsius,
+                legacy.outlet_humidity,
+                legacy.inlet_gkg,
+                legacy.outlet_gkg,
+                legacy.inlet_grlb,
+                legacy.outlet_grlb,
+            ],
+            [None] * 8,
+        )
 
     async def test_power_waits_for_matching_later_opcode(self):
         client = await self.create_client()

@@ -106,6 +106,15 @@ class DeviceStatus:
     temperature_unit: str
     event_opcode: int
     target_humidity: int | None = None
+    inlet_celsius: int | None = None
+    inlet_humidity: int | None = None
+    outlet_celsius: int | None = None
+    outlet_humidity: int | None = None
+    inlet_gkg: int | None = None
+    outlet_gkg: int | None = None
+    inlet_grlb: int | None = None
+    outlet_grlb: int | None = None
+    draining: bool | None = None
 
 
 @dataclass
@@ -298,6 +307,15 @@ class LocalClient:
                             decoded["temperature_display"],
                             frame.opcode,
                             decoded["target_humidity"],
+                            decoded["inlet_celsius"],
+                            decoded["inlet_humidity"],
+                            decoded["outlet_celsius"],
+                            decoded["outlet_humidity"],
+                            decoded["inlet_gkg"],
+                            decoded["outlet_gkg"],
+                            decoded["inlet_grlb"],
+                            decoded["outlet_grlb"],
+                            decoded["draining"],
                         )
                         self._last_status = status
                         pending = session.pending

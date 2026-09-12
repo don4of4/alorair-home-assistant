@@ -11,7 +11,23 @@ from .coordinator import AlorairCoordinator
 from .local_coordinator import LocalAlorairCoordinator
 
 LOCAL_SUPPORTED_ENTITIES = frozenset(
-    {"dehumidifier", "power", "temperatureUnit", "fresh", "sample_time", "last_command"}
+    {
+        "dehumidifier",
+        "power",
+        "drainStatus",
+        "temperatureUnit",
+        "fresh",
+        "sample_time",
+        "last_command",
+        "inHumidity",
+        "outHumidity",
+        "inCelsius",
+        "outCelsius",
+        "inGkg",
+        "outGkg",
+        "inGrlb",
+        "outGrlb",
+    }
 )
 
 

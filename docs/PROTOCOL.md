@@ -163,7 +163,43 @@ The complete frame length is **`29 + N`**. The checksum's high byte is not a mes
 
 Only the observed native power values `00` and `01` map to off/on. Other values are unknown; the cloud interpretation of `powerStatus=02` is not transferred into the native decoder. The reports establish device-reported enabled state, not compressor or pump current. Another field changed during shutdown, but its physical meaning remains unmapped.
 
-The native target command carries one **binary** byte, unlike the cloud API's decimal-string value. The decoder accepts 20 (continuous) or 25–80 in steps of five; other reported values remain unknown. This is a target, not measured intake RH. The HA dehumidifier maps it to target and auto/continuous controls while leaving current humidity unknown. Native intake/outlet humidity, faults, purge, locator and specific-humidity display settings remain unmapped. Similar opcode numbers in another controller's project do not validate those fields.
+The native target command carries one **binary** byte, unlike the cloud API's decimal-string value. The decoder accepts 20 (continuous) or 25–80 in steps of five; other reported values remain unknown. This is a target, not measured intake RH. The HA dehumidifier maps it to target and auto/continuous controls, and takes its current humidity from the separately decoded inlet measurement below rather than from this byte. Native faults, purge, locator and specific-humidity display settings remain unmapped. Similar opcode numbers in another controller's project do not validate those fields.
+
+### Status data layout (34 bytes)
+
+Offsets below are into the 34-byte data field of a `07` status frame and are zero-based; add 26 for the full-frame offset. Multibyte values are big-endian.
+
+| Data offset | Length | Meaning |
+| --- | --- | --- |
+| 3 | 1 | Power: `00` off, `01` on. Other values are unknown. |
+| 4 | 1 | Draining: `00` inactive, `01` active. Other values are unknown. |
+| 8 | 1 | Inlet temperature, °C |
+| 9 | 1 | Inlet temperature, °F |
+| 10 | 1 | Inlet relative humidity, percent |
+| 11 | 1 | Outlet temperature, °C |
+| 12 | 1 | Outlet temperature, °F |
+| 13 | 1 | Outlet relative humidity, percent |
+| 14 | 2 | Inlet grains per pound |
+| 16 | 2 | Inlet specific humidity, g/kg |
+| 18 | 2 | Outlet grains per pound |
+| 20 | 2 | Outlet specific humidity, g/kg |
+| 23 | 1 | Humidity target; 20 selects continuous mode |
+| 32 | 1 | Temperature display selection: `00` Celsius, `01` Fahrenheit |
+
+The measurement block at offsets 8–21 was reverse-engineered from packet captures of one unit's native status reports and cross-checked against the vendor cloud's readings of the same sensors. The Fahrenheit and Celsius bytes agree with each other, and the grains and g/kg fields are consistent with each other and with the paired temperature and humidity. The values also move as expected while the unit runs.
+
+The decoder treats the temperature bytes as signed and reports a temperature only when its paired Fahrenheit byte confirms the conversion. Humidity is reported only within 0–100%. Any other value is left unknown rather than guessed. Sub-zero temperatures follow from the signed interpretation and were not observed.
+
+Offset 4 changed from `00` to `01` and back during a physically observed purge while the other operating flags stayed on. It supplies the existing Draining entity. The physical button test did not establish the native purge command or its acknowledgement; remote purge remains unavailable locally.
+
+The remaining data bytes are **candidates, not established fields**, and none is mapped to an entity:
+
+- Offset 0 is a constant `0x20`, a candidate for the cloud fault mask's always-ignored `0x20` bit.
+- Offset 22 falls during operation and recovers afterwards, a coil-temperature candidate with no cloud cross-reference.
+- Offsets 24–25 and 28–29 slowly increment, so both are counter candidates.
+- Offsets 6 and 7 are 0/1 flags that change around power transitions.
+
+Locate, defrost and fault events were not observed, so those states remain unmapped. The absence of a local fault entity is not evidence that the unit is fault-free.
 
 ### Freshness, command matching and cancellation
 

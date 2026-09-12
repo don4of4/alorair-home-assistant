@@ -146,8 +146,17 @@ class LocalAlorairCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_set_updated_data(
             {
                 "powerStatus": "01" if status.power is True else "00" if status.power is False else None,
+                "drainStatus": "01" if status.draining is True else "00" if status.draining is False else None,
                 "temperatureUnit": {"celsius": 0, "fahrenheit": 1}.get(status.temperature_unit),
                 "currentHumidity": status.target_humidity,
+                "inHumidity": status.inlet_humidity,
+                "outHumidity": status.outlet_humidity,
+                "inCelsius": status.inlet_celsius,
+                "outCelsius": status.outlet_celsius,
+                "inGkg": status.inlet_gkg,
+                "outGkg": status.outlet_gkg,
+                "inGrlb": status.inlet_grlb,
+                "outGrlb": status.outlet_grlb,
                 "updateTimeStr": received_at,
                 "observed_at_utc": received_at,
             }
