@@ -37,7 +37,22 @@ ENTITY_KEYS = {
     },
     "switch": {"power", "locate"},
 }
-LOCAL_KEYS = {"dehumidifier", "power", "temperatureUnit", "fresh", "sample_time", "last_command"}
+LOCAL_KEYS = {
+    "dehumidifier",
+    "power",
+    "temperatureUnit",
+    "fresh",
+    "sample_time",
+    "last_command",
+    "inHumidity",
+    "outHumidity",
+    "inCelsius",
+    "outCelsius",
+    "inGkg",
+    "outGkg",
+    "inGrlb",
+    "outGrlb",
+}
 MEASUREMENT_UNITS = {
     "inHumidity": "%",
     "outHumidity": "%",
@@ -183,6 +198,11 @@ async def test_entity_registry_and_customizations_survive_transport_round_trip(h
                     assert float(humidity.state) == 57
                     assert hass.states.get(fault_id).state == "on"
                 else:
+                    # Local measurements come from the appliance's own status report.
+                    assert float(humidity.state) == 61
+                    for key, measured in (("inGrlb", 63), ("outGrlb", 70)):
+                        grains_id = registry.async_get_entity_id("sensor", DOMAIN, f"{MAC}_{key}")
+                        assert float(hass.states.get(grains_id).state) == measured, key
                     assert hass.states.get(fault_id).state == "unavailable"
                     assert (cloud_type.call_count, flow_cloud_type.call_count, cloud.mock_calls) == baseline_cloud_calls
             finally:

@@ -163,7 +163,38 @@ The complete frame length is **`29 + N`**. The checksum's high byte is not a mes
 
 Only the observed native power values `00` and `01` map to off/on. Other values are unknown; the cloud interpretation of `powerStatus=02` is not transferred into the native decoder. The reports establish device-reported enabled state, not compressor or pump current. Another field changed during shutdown, but its physical meaning remains unmapped.
 
-The native target command carries one **binary** byte, unlike the cloud API's decimal-string value. The decoder accepts 20 (continuous) or 25–80 in steps of five; other reported values remain unknown. This is a target, not measured intake RH. The HA dehumidifier maps it to target and auto/continuous controls while leaving current humidity unknown. Native intake/outlet humidity, faults, purge, locator and specific-humidity display settings remain unmapped. Similar opcode numbers in another controller's project do not validate those fields.
+The native target command carries one **binary** byte, unlike the cloud API's decimal-string value. The decoder accepts 20 (continuous) or 25–80 in steps of five; other reported values remain unknown. This is a target, not measured intake RH. The HA dehumidifier maps it to target and auto/continuous controls, and takes its current humidity from the separately decoded inlet measurement below rather than from this byte. Native faults, purge, locator and specific-humidity display settings remain unmapped. Similar opcode numbers in another controller's project do not validate those fields.
+
+### Status data layout (34 bytes)
+
+Offsets below are into the 34-byte data field of a `07` status frame and are zero-based; add 26 for the full-frame offset. Multibyte values are big-endian.
+
+| Data offset | Length | Meaning |
+| --- | --- | --- |
+| 3 | 1 | Power: `00` off, `01` on. Other values are unknown. |
+| 8 | 1 | Inlet temperature, °C |
+| 9 | 1 | Inlet temperature, °F |
+| 10 | 1 | Inlet relative humidity, percent |
+| 11 | 1 | Outlet temperature, °C |
+| 12 | 1 | Outlet temperature, °F |
+| 13 | 1 | Outlet relative humidity, percent |
+| 14 | 2 | Inlet grains per pound |
+| 16 | 2 | Inlet specific humidity, g/kg |
+| 18 | 2 | Outlet grains per pound |
+| 20 | 2 | Outlet specific humidity, g/kg |
+| 23 | 1 | Humidity target; 20 selects continuous mode |
+| 32 | 1 | Temperature display selection: `00` Celsius, `01` Fahrenheit |
+
+The measured block at offsets 8–21 was established offline from **398 device status frames** in 13 private packet captures of one Lite-equipped Storm Pro, spanning about eight hours on 2026-09-07/08 UTC, decoded with the integration's own frame parser. In every one of the 398 frames the Fahrenheit byte equals `floor(C × 9/5 + 32)` of its Celsius neighbour, across 13 distinct outlet pairs from 17 to 29 °C and two inlet pairs at 19 and 20 °C. In every frame each grains-per-pound value is exactly seven times its g/kg neighbour, and each g/kg value agrees within ±1 g/kg with the mixing ratio computed from the paired °C and RH at standard pressure. Two time-correlated cloud readings match data offset 10: a cloud intake reading of 67% taken minutes after a capture whose twelve frames all carried 67, and a cloud intake reading of 61% taken within a minute of recovery frames carrying 61. Physical behaviour during operation matches a dehumidifier: over a 188-second run the outlet RH fell from 74% to 32% while outlet temperature rose from 20 to 28 °C and inlet RH fell from 64% to 55%; a 121-second run showed outlet RH 62% → 27% and outlet temperature 24 → 29 °C. This is device-reported telemetry validated against the vendor cloud's own readings of the same sensors; it is not an independent reference-instrument calibration.
+
+Observed ranges were inlet 19–20 °C and 53–68% RH, and outlet 17–29 °C and 27–86% RH. No byte above 127 was observed. The decoder treats the temperature bytes as signed and reports a temperature only when its paired Fahrenheit byte matches the floor rule; humidity is reported only within 0–100%. Any other value is left unknown rather than guessed. Sub-zero encoding is an inference from that signed interpretation, not an observation.
+
+The remaining data bytes are **candidates, not established fields**, and none of them is mapped to an entity:
+
+- Offset 0 is a constant `0x20` in every captured frame, making it a candidate for the cloud fault mask's always-ignored `0x20` bit. No fault was observed in any capture, so native fault semantics are unverified; the absence of a local fault entity does not mean the unit is fault-free.
+- Offset 22 falls from about 19 to 1 during operation and recovers afterwards. An evaporator or coil temperature is plausible, and there is no cloud cross-reference for it.
+- Two 16-bit values at offsets 24–25 and 28–29 each incremented by one during the evidence window, making them candidate working-time counters.
+- 0/1 flags at offsets 4, 6 and 7 change around power transitions: offset 7 stays set for about three minutes after OFF, offset 6 is set during operation, and offset 4 pulses for about 30 seconds three minutes after OFF. Their meanings are unproven.
 
 ### Freshness, command matching and cancellation
 
@@ -183,4 +214,4 @@ Fresh status is required before starting, changing display units or setting humi
 
 A standalone endpoint completed local Fahrenheit → Celsius → Fahrenheit and one deliberate warm disconnect/reconnect, with fresh status/heartbeat afterward. A later standalone trial confirmed native ON and OFF. Scoped rollback rules were removed cleanly, and fresh cloud OFF state was verified in Home Assistant after recovery. A subsequent standalone local trial completed ON → 50 → 55 → 20 → OFF with matching same-session reports and continuous mode restored. Independent capture analysis verified the matching commands, three-minute OFF interval, scoped rollback and fresh cloud OFF reports afterward.
 
-Integration 0.3.0 was then temporarily commissioned through actual Home Assistant entities and services. The local dehumidifier retained its registered identity; Fahrenheit → Celsius → Fahrenheit, ON and targets 50/55 received matching reports. A valid native continuous request (`09/23`, data `0x14`) was sent, but no matching `07/23` reply followed and subsequent status retained target 55. The action timed out; a later OFF command was confirmed with target 55 still selected. The scoped network guard rolled back cleanly. This is partial commissioning with an unresolved command-reliability finding, not successful continuous-mode restoration or production readiness. No firmware cause has been established. Cold boot, persistent offline DNS, future destination changes and sustained offline operation remain unverified. See [Validation](LIVE_VALIDATION.md#experimental-local-commissioning).
+Integration 0.3.0 was then temporarily commissioned through actual Home Assistant entities and services. The local dehumidifier retained its registered identity; Fahrenheit → Celsius → Fahrenheit, ON and targets 50/55 received matching reports. A valid native continuous request (`09/23`, data `0x14`) was sent, but no matching `07/23` reply followed and subsequent status retained target 55. The action timed out; a later OFF command was confirmed with target 55 still selected. The scoped network guard rolled back cleanly. This is partial commissioning with an unresolved command-reliability finding, not successful continuous-mode restoration or production readiness. No firmware cause has been established. Cold boot, persistent offline DNS, future destination changes and sustained offline operation remain unverified. The 0.4.0 measured-telemetry mapping above was established offline from captured frames and has not yet been observed live through an installed Home Assistant profile. See [Validation](LIVE_VALIDATION.md#experimental-local-commissioning).

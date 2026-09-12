@@ -65,12 +65,23 @@ class Appliance:
         self.power = False
         self.fahrenheit = True
         self.target = 20
+        # Realistic measured values as (celsius, fahrenheit, humidity); tests override these.
+        self.inlet = (20, 68, 61)
+        self.outlet = (18, 64, 75)
+        self.inlet_grlb, self.inlet_gkg = 63, 9
+        self.outlet_grlb, self.outlet_gkg = 70, 10
 
     async def report(self, opcode=0x1C):
         data = bytearray(34)
         data[3] = int(self.power)
         data[32] = int(self.fahrenheit)
         data[23] = self.target
+        data[8:11] = bytes(self.inlet)
+        data[11:14] = bytes(self.outlet)
+        data[14:16] = self.inlet_grlb.to_bytes(2, "big")
+        data[16:18] = self.inlet_gkg.to_bytes(2, "big")
+        data[18:20] = self.outlet_grlb.to_bytes(2, "big")
+        data[20:22] = self.outlet_gkg.to_bytes(2, "big")
         self.writer.write(Frame(bytes.fromhex(MAC), 0, 7, opcode, bytes(data)).encode())
         await self.writer.drain()
 
@@ -436,7 +447,7 @@ async def test_local_humidifier_services_confirm_targets_and_preserve_identity(h
     humidifier_id = registry.async_get_entity_id("humidifier", DOMAIN, f"{MAC}_dehumidifier")
     state = hass.states.get(humidifier_id)
     assert state.state == "on" and state.attributes["mode"] == "continuous"
-    assert state.attributes.get("current_humidity") is None
+    assert state.attributes["current_humidity"] == 61
     assert "fault_codes" not in state.attributes
     assert "cloud_polled_at" not in state.attributes
     for service, parameters, target in (
@@ -459,6 +470,35 @@ async def test_local_humidifier_services_confirm_targets_and_preserve_identity(h
         assert configured.runtime_data.data["currentHumidity"] == target
     await eventually(lambda: hass.states.get(humidifier_id).attributes["humidity"] == 55)
     assert hass.states.get(humidifier_id).attributes["last_auto_humidity"] == 55
+
+
+async def test_local_measurements_are_reported_by_the_device_and_clear_when_stale(hass, unit):
+    configured, appliance = unit
+    await appliance.report()
+    await eventually(lambda: not configured.runtime_data.status_stale)
+    registry = er.async_get(hass)
+    expected = {
+        "inHumidity": (61, "%"),
+        "outHumidity": (75, "%"),
+        "inCelsius": (20, "°C"),
+        "outCelsius": (18, "°C"),
+        "inGkg": (9, "g/kg"),
+        "outGkg": (10, "g/kg"),
+    }
+    measurements = {key: registry.async_get_entity_id("sensor", DOMAIN, f"{MAC}_{key}") for key in expected}
+    for key, (value, units) in expected.items():
+        state = hass.states.get(measurements[key])
+        assert float(state.state) == value, key
+        assert state.attributes["unit_of_measurement"] == units, key
+    humidifier_id = registry.async_get_entity_id("humidifier", DOMAIN, f"{MAC}_dehumidifier")
+    assert hass.states.get(humidifier_id).attributes["current_humidity"] == 61
+    configured.runtime_data._received_monotonic -= 36
+    configured.runtime_data.async_update_listeners()
+    await hass.async_block_till_done()
+    for key, entity_id in measurements.items():
+        assert hass.states.get(entity_id).state == "unavailable", key
+        assert "unavailable_reason" not in hass.states.get(entity_id).attributes, key
+    assert hass.states.get(humidifier_id).attributes.get("current_humidity") is None
 
 
 async def test_local_restores_auto_target_before_initial_device_connection_without_commands(hass):
@@ -488,6 +528,7 @@ async def test_local_humidifier_hides_stale_fields_but_keeps_normal_off_reachabl
     state = hass.states.get(humidifier_id)
     assert state.state == "unknown"
     assert state.attributes["mode"] is None and state.attributes.get("humidity") is None
+    assert state.attributes.get("current_humidity") is None
     with pytest.raises(ServiceValidationError, match="Fresh local"):
         await hass.services.async_call(
             "humidifier", "set_humidity", {"entity_id": humidifier_id, "humidity": 55}, blocking=True

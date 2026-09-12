@@ -102,8 +102,8 @@ class AlorairLocalHumidifier(AlorairHumidifier):
         return super().is_on if not self.coordinator.status_stale else None
 
     @property
-    def current_humidity(self) -> None:
-        return None
+    def current_humidity(self) -> float | None:
+        return super().current_humidity if not self.coordinator.status_stale else None
 
     @property
     def target_humidity(self) -> int | None:

@@ -13,6 +13,71 @@ from custom_components.alorair_lite.local_protocol import (
 )
 
 MAC = bytes.fromhex("020000000001")
+# Captured 34-byte status payloads; these carry measurement bytes only, no device identity.
+OFF_PAYLOAD = "200000000000000014443e12404f003f00090046000a101403940000036a00000100"
+ON_PAYLOAD = "20000001000001011444371c52200038000800380008033703950000036a00000100"
+CELSIUS_PAYLOAD = "200000000000000014444314444d0046000a004d000b121403940000036a00000000"
+CAPTURED_STATUS = (
+    (
+        0x1C,
+        OFF_PAYLOAD,
+        {
+            "temperature_display": "fahrenheit",
+            "power": False,
+            "target_humidity": 20,
+            "inlet_celsius": 20,
+            "inlet_humidity": 62,
+            "outlet_celsius": 18,
+            "outlet_humidity": 79,
+            "inlet_grlb": 63,
+            "inlet_gkg": 9,
+            "outlet_grlb": 70,
+            "outlet_gkg": 10,
+        },
+    ),
+    (
+        0x1C,
+        ON_PAYLOAD,
+        {
+            "temperature_display": "fahrenheit",
+            "power": True,
+            "target_humidity": 55,
+            "inlet_celsius": 20,
+            "inlet_humidity": 55,
+            "outlet_celsius": 28,
+            "outlet_humidity": 32,
+            "inlet_grlb": 56,
+            "inlet_gkg": 8,
+            "outlet_grlb": 56,
+            "outlet_gkg": 8,
+        },
+    ),
+    (
+        0x24,
+        CELSIUS_PAYLOAD,
+        {
+            "temperature_display": "celsius",
+            "power": False,
+            "target_humidity": 20,
+            "inlet_celsius": 20,
+            "inlet_humidity": 67,
+            "outlet_celsius": 20,
+            "outlet_humidity": 77,
+            "inlet_grlb": 70,
+            "inlet_gkg": 10,
+            "outlet_grlb": 77,
+            "outlet_gkg": 11,
+        },
+    ),
+)
+
+
+def captured(*changes, payload=OFF_PAYLOAD, opcode=0x1C):
+    """Decode a captured payload after replacing individual data offsets."""
+    data = bytearray.fromhex(payload)
+    for offset, value in changes:
+        data[offset] = value
+    return observed_status(Frame(MAC, 0, 7, opcode, bytes(data)))
 
 
 class ProtocolTests(unittest.TestCase):
@@ -38,7 +103,9 @@ class ProtocolTests(unittest.TestCase):
             result = observed_status(Frame(MAC, 0, 7, 0x23, bytes(data)))
             with self.subTest(target=target):
                 self.assertEqual(result["target_humidity"], target if target in supported else None)
-                self.assertNotIn("intake_humidity", result)
+                self.assertEqual((result["inlet_humidity"], result["outlet_humidity"]), (0, 0))
+                self.assertEqual((result["inlet_celsius"], result["outlet_celsius"]), (None, None))
+                self.assertEqual(result["inlet_gkg"], 0)
                 self.assertNotIn("fault", result)
 
     def test_power_builder_accepts_only_explicit_booleans(self):
@@ -70,7 +137,57 @@ class ProtocolTests(unittest.TestCase):
                 self.assertEqual(result["event_opcode"], 0x21)
                 self.assertEqual(result["temperature_display"], "fahrenheit")
                 self.assertNotIn("compressor", result)
-                self.assertEqual(set(result), {"power", "event_opcode", "temperature_display", "target_humidity"})
+                self.assertEqual(
+                    set(result),
+                    {
+                        "power",
+                        "event_opcode",
+                        "temperature_display",
+                        "target_humidity",
+                        "inlet_celsius",
+                        "inlet_humidity",
+                        "outlet_celsius",
+                        "outlet_humidity",
+                        "inlet_grlb",
+                        "inlet_gkg",
+                        "outlet_grlb",
+                        "outlet_gkg",
+                    },
+                )
+
+    def test_captured_status_payloads_decode_measured_inlet_and_outlet_values(self):
+        for opcode, payload, expected in CAPTURED_STATUS:
+            with self.subTest(payload=payload):
+                result = observed_status(Frame(MAC, 0, 7, opcode, bytes.fromhex(payload)))
+                self.assertEqual(result, {**expected, "event_opcode": opcode})
+
+    def test_unpaired_fahrenheit_byte_blanks_only_its_own_celsius_value(self):
+        for offset, blanked, kept, humidity, measured in (
+            (9, "inlet_celsius", "outlet_celsius", "inlet_humidity", 62),
+            (12, "outlet_celsius", "inlet_celsius", "outlet_humidity", 79),
+        ):
+            with self.subTest(offset=offset):
+                result = captured((offset, 0))
+                self.assertIsNone(result[blanked])
+                self.assertIsNotNone(result[kept])
+                self.assertEqual(result[humidity], measured)
+
+    def test_celsius_bytes_are_signed_for_sub_zero_placements(self):
+        result = captured((8, 0xFB), (9, 23))
+        self.assertEqual(result["inlet_celsius"], -5)
+        self.assertEqual(result["inlet_humidity"], 62)
+        self.assertEqual(result["outlet_celsius"], 18)
+
+    def test_impossible_humidity_is_unknown_without_hiding_its_temperature(self):
+        for offset, humidity, temperature, celsius in (
+            (10, "inlet_humidity", "inlet_celsius", 20),
+            (13, "outlet_humidity", "outlet_celsius", 18),
+        ):
+            for value in (101, 200, 255):
+                with self.subTest(offset=offset, value=value):
+                    result = captured((offset, value))
+                    self.assertIsNone(result[humidity])
+                    self.assertEqual(result[temperature], celsius)
 
     def test_data_length_includes_only_data(self):
         raw = temperature_command(MAC, True, 1234)

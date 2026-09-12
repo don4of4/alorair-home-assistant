@@ -1,5 +1,6 @@
 """Observed Storm/Lite framing; no network access or unverified command opcodes."""
 
+import math
 from dataclasses import dataclass
 
 MAGIC = b"\x0d\x0e"
@@ -113,15 +114,37 @@ def humidity_command(mac: bytes, target: int, timestamp: int) -> bytes:
     return Frame(mac, timestamp, 0x09, 0x23, bytes([target])).encode()
 
 
+def _temperature(data: bytes, index: int) -> int | None:
+    """Report signed Celsius only when the paired Fahrenheit byte confirms this layout."""
+    celsius = int.from_bytes(data[index : index + 1], "big", signed=True)
+    fahrenheit = int.from_bytes(data[index + 1 : index + 2], "big", signed=True)
+    return celsius if fahrenheit == math.floor(celsius * 9 / 5 + 32) else None
+
+
+def _humidity(value: int) -> int | None:
+    return value if 0 <= value <= 100 else None
+
+
 def observed_status(frame: Frame) -> dict[str, bool | int | str | None]:
     if frame.function != 0x07 or len(frame.data) != 34:
         raise ValueError("Not the observed Storm/Lite status layout")
     # Display and 0/1 enabled state are established by captured command echoes.
     if frame.data[32] not in (0, 1):
         raise ValueError("Unknown temperature display value")
+    data = frame.data
+    # Inlet/outlet block established from 398 captured frames: F byte = floor(C*9/5+32),
+    # gr/lb = 7*g/kg, g/kg matches the psychrometric mixing ratio of (C, RH).
     return {
-        "temperature_display": "fahrenheit" if frame.data[32] else "celsius",
-        "power": bool(frame.data[3]) if frame.data[3] in (0, 1) else None,
-        "target_humidity": humidity_target(frame.data[23]),
+        "temperature_display": "fahrenheit" if data[32] else "celsius",
+        "power": bool(data[3]) if data[3] in (0, 1) else None,
+        "target_humidity": humidity_target(data[23]),
         "event_opcode": frame.opcode,
+        "inlet_celsius": _temperature(data, 8),
+        "inlet_humidity": _humidity(data[10]),
+        "outlet_celsius": _temperature(data, 11),
+        "outlet_humidity": _humidity(data[13]),
+        "inlet_grlb": int.from_bytes(data[14:16], "big"),
+        "inlet_gkg": int.from_bytes(data[16:18], "big"),
+        "outlet_grlb": int.from_bytes(data[18:20], "big"),
+        "outlet_gkg": int.from_bytes(data[20:22], "big"),
     }
