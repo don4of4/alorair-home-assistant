@@ -4,7 +4,7 @@ version = "0.4.0"
 license = "MIT"
 requires-python = ">=3.14.2"
 dependencies = [
-    "aiohttp==3.14.3",
+    "aiohttp==3.14.4",
     "cryptography==50.0.0",
     "homeassistant==2026.6.2",
 ]
@@ -23,7 +23,7 @@ dev = [
 # and #14. pyOpenSSL 26.4.0 supports cryptography 50 without relaxing its bounds.
 # Revisit these overrides when updating the Home Assistant test baseline.
 override-dependencies = [
-    "aiohttp==3.14.3",
+    "aiohttp==3.14.4",
     "cryptography==50.0.0",
     "pillow==12.3.0",
     "pyjwt==2.13.0",
