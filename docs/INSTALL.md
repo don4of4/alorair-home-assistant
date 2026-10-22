@@ -175,6 +175,10 @@ The root `LICENSE` is the authoritative MIT license text. After changing it, run
 
 The index-specific local `uv.lock` is excluded from Git. Development uses `aiooui==0.1.7`, satisfying the upstream `>=0.1.1` requirement while retaining exact Home Assistant 2026.6.2. See the [dependency declaration](https://github.com/Bluetooth-Devices/bluetooth-adapters/blob/main/pyproject.toml) and [maintainer changelog](https://github.com/Bluetooth-Devices/aiooui/blob/main/CHANGELOG.md). This development constraint does not replace Bluetooth packages in an existing Home Assistant installation.
 
+The `[tool.uv].override-dependencies` declarations preserve the security updates to aiohttp, cryptography, Pillow, PyJWT and uv while retaining Home Assistant 2026.6.2 as the test baseline. pyOpenSSL 26.4.0 supports the selected cryptography 50.0.0; its compatibility bounds are not overridden. In particular, uv 0.13.4 addresses [GHSA-hq85-5cpj-mr62](https://github.com/astral-sh/uv/security/advisories/GHSA-hq85-5cpj-mr62). Both `uv sync` and regenerated exports use these declarations. Revisit the overrides when updating the Home Assistant test baseline. These are development dependencies; they do not change an installed Home Assistant system or the integration's empty runtime requirements.
+
+CI also resolves `pyproject.toml` against the exported version constraints before installing the hash-pinned environment. A plain `uv pip check` still reports Home Assistant's original exact pins because it does not account for these intentional resolver overrides; use the CI source-resolution check and tests to validate this development environment.
+
 ### HACS distribution checks
 
 `hacs.json` declares the display name and minimum Home Assistant version. HACS uses the source tree at the selected release tag, with all runtime files in `custom_components/alorair_lite/`. Leave `zip_release` unset: the attached release ZIP has a wrapper directory for manual installation, whereas HACS's ZIP-release mode expects a different archive layout.
