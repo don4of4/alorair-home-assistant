@@ -12,6 +12,10 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.14"
+      - name: Check dependency source consistency
+        run: >-
+          uv pip compile pyproject.toml --group dev --universal --python-version 3.14.2
+          --constraint requirements-dev.txt --output-file /tmp/requirements-check.txt
       - name: Install tested dependencies
         run: |
           uv venv
